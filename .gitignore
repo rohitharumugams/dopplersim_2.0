@@ -4,6 +4,9 @@ venv/
 __pycache__/
 *.py[cod]
 
+.cache/
+.matplotlib_cache/
+
 renders/
 static/
 uploads/
