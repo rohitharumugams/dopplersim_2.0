@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #181c27;
+      --border: #2a3142;
+      --text: #e8ecf4;
+      --muted: #9aa3b5;
+      --accent: #6c9eff;
+    }
+    * { box-sizing: border-box; }
+    .app-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    body:not(.specg-page) .app-tabs {
+      border-bottom-color: #1e293b;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+    }
+    .app-tabs-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+    .app-tab {
+      display: inline-block;
+      padding: 0.9rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    body:not(.specg-page) .app-tab { color: #94a3b8; }
+    body:not(.specg-page) .app-tab:hover { color: #e2e8f0; }
+    body:not(.specg-page) .app-tab.app-tab-active {
+      border-bottom-color: #3b82f6;
+      color: #fff;
+    }
+    body.specg-page .app-tab:hover { color: var(--text); }
+    body.specg-page .app-tab.app-tab-active {
+      border-bottom-color: var(--accent);
+      color: var(--text);
+    }
+    body.specg-page {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    body.specg-page header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    body.specg-page h1 { margin: 0 0 0.35rem; font-size: 1.35rem; font-weight: 600; }
+    body.specg-page .sub { color: var(--muted); font-size: 0.9rem; margin: 0; }
+    body.specg-page main { padding: 1.25rem 1.5rem 2rem; max-width: 1600px; margin: 0 auto; }
+    body.specg-page form.upload {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 1.25rem;
+    }
+    body.specg-page form.upload.compare-form { align-items: stretch; }
+    body.specg-page input[type="file"] { color: var(--muted); max-width: 100%; }
+    body.specg-page label.fmax {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    body.specg-page label.fmax.file-label {
+      flex-direction: column;
+      align-items: flex-start;
+      flex: 1 1 240px;
+    }
+    body.specg-page label.fmax.file-label input[type="file"] { width: 100%; }
+    body.specg-page label.fmax select,
+    body.specg-page label.fmax input[type="number"] {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.9rem;
+    }
+    body.specg-page label.fmax input[type="number"] { width: 5.5rem; }
+    body.specg-page .stft-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      width: 100%;
+      flex: 1 1 100%;
+      padding: 0.65rem 0.75rem;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+    }
+    body.specg-page .stft-group-title {
+      width: 100%;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #7d8699;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    body.specg-page form.upload button {
+      background: var(--accent);
+      color: #0a0e18;
+      border: none;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    body.specg-page form.upload button:hover { filter: brightness(1.08); }
+    body.specg-page .meta { color: var(--muted); font-size: 0.85rem; width: 100%; flex: 1 1 100%; }
+    body.specg-page .error {
+      background: #3a1520;
+      border: 1px solid #8b3048;
+      color: #ffb4c0;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    body.specg-page .grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(2, auto);
+      gap: 0.85rem;
+    }
+    @media (max-width: 1200px) {
+      body.specg-page .grid { grid-template-columns: repeat(2, 1fr); grid-template-rows: auto; }
+    }
+    @media (max-width: 600px) {
+      body.specg-page .grid { grid-template-columns: 1fr; }
+    }
+    body.specg-page .cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    body.specg-page .cell h2 {
+      margin: 0;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+    }
+    body.specg-page .cell img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #0a0c12;
+    }
+    body.specg-page .cell-params {
+      margin: 0;
+      padding: 0.45rem 0.65rem 0.55rem;
+      font-size: 0.68rem;
+      line-height: 1.45;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 0.5rem;
+      row-gap: 0.12rem;
+    }
+    body.specg-page .cell-params dt { margin: 0; font-weight: 600; color: #7d8699; }
+    body.specg-page .cell-params dt::after { content: ":"; }
+    body.specg-page .cell-params dd { margin: 0; color: var(--text); word-break: break-word; }
+    body.specg-page .placeholder {
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    body.specg-page .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      width: 100%;
+      flex: 1 1 100%;
+    }
+    @media (max-width: 700px) {
+      body.specg-page .compare-grid { grid-template-columns: 1fr; }
+    }
+    body.specg-page .compare-result {
+      margin-top: 1.25rem;
+      padding: 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      text-align: center;
+    }
+    body.specg-page .compare-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+    @media (max-width: 900px) {
+      body.specg-page .compare-columns { grid-template-columns: 1fr; }
+    }
+    body.specg-page .compare-col {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem;
+    }
+    body.specg-page .compare-col h3 {
+      margin: 0 0 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-word;
+    }
+    body.specg-page .compare-col h3.clip-a { color: #6c9eff; }
+    body.specg-page .compare-col h3.clip-b { color: #f0883e; }
+    body.specg-page .compare-panel {
+      margin-bottom: 0.85rem;
+    }
+    body.specg-page .compare-panel:last-child { margin-bottom: 0; }
+    body.specg-page .compare-panel img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      background: #0a0c12;
+    }
+    body.specg-page .metric-grid {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.65rem;
+      text-align: left;
+    }
+    body.specg-page .metric-card {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+    }
+    body.specg-page .metric-card dt { margin: 0; font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+    body.specg-page .metric-card dd { margin: 0.2rem 0 0; font-size: 1.1rem; color: var(--text); font-weight: 700; }
+  </style>
+  {% if active_tab|default('doppler') == 'doppler' %}<script src="https://cdn.tailwindcss.com"></script>{% endif %}
+</head>
+<body class="{% if active_tab in ['spectrograms', 'compare'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
+  <nav class="app-tabs">
+    <div class="app-tabs-inner">
+      <a
+        href="{{ url_for('index') }}"
+        class="app-tab {% if active_tab|default('doppler') == 'doppler' %}app-tab-active{% endif %}"
+      >Pass-By Sim</a>
+      <a
+        href="{{ url_for('spectrograms') }}"
+        class="app-tab {% if active_tab == 'spectrograms' %}app-tab-active{% endif %}"
+      >Spectrogram Explorer</a>
+      <a
+        href="{{ url_for('compare_audio') }}"
+        class="app-tab {% if active_tab == 'compare' %}app-tab-active{% endif %}"
+      >Audio Comparison</a>
+    </div>
+  </nav>
+
+  {% if active_tab|default('doppler') == 'doppler' %}
+  <div class="max-w-6xl mx-auto px-4 py-10">
+    <header class="mb-10">
+      <h1 class="text-3xl font-bold tracking-tight text-white">DopplerSim 2.0</h1>
+      <p class="mt-2 text-slate-400 max-w-3xl">
+        Physics-informed vehicle pass-by synthesis. The uploaded recording is analyzed using
+        the <strong class="text-slate-300">original pass-by parameters</strong> (v₁, h₁, t_CPA₁)
+        to invert Doppler and geometric attenuation and estimate an intrinsic source spectrum.
+        A new stochastic realization is then rendered under your chosen geometry via exact retarded time.
+      </p>
+    </header>
+
+    {% if error %}
+    <div class="mb-6 rounded-lg border border-red-500/40 bg-red-950/40 px-4 py-3 text-red-200">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" class="space-y-8">
+      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Input Recording</h2>
+        {% if has_upload %}
+        <div class="mb-4 rounded-lg border border-blue-500/30 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
+          Using saved clip: <span class="font-medium text-white">{{ upload_filename }}</span>
+          <span class="block mt-1 text-blue-300/80">Upload a new file below to replace it, or change parameters and generate again.</span>
+        </div>
+        {% endif %}
+        <label class="block text-sm text-slate-300 mb-2" for="audio_file">
+          {% if has_upload %}Replace WAV (optional){% else %}Upload WAV{% endif %}
+        </label>
+        <input
+          id="audio_file"
+          name="audio_file"
+          type="file"
+          accept=".wav,audio/wav"
+          {% if not has_upload %}required{% endif %}
+          class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-500"
+        >
+      </section>
+
+      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 class="text-lg font-semibold text-white mb-1">Speed Units</h2>
+        <p class="text-xs text-slate-500 mb-4">Display only — physics always uses m/s internally.</p>
+        <div class="inline-flex rounded-lg border border-slate-700 p-1" role="group" aria-label="Speed unit">
+          <label class="cursor-pointer">
+            <input type="radio" name="speed_unit" value="mps" class="peer sr-only" {% if speed_unit != 'kmph' %}checked{% endif %}>
+            <span class="block rounded-md px-4 py-2 text-sm text-slate-400 peer-checked:bg-blue-600 peer-checked:text-white">m/s</span>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="speed_unit" value="kmph" class="peer sr-only" {% if speed_unit == 'kmph' %}checked{% endif %}>
+            <span class="block rounded-md px-4 py-2 text-sm text-slate-400 peer-checked:bg-blue-600 peer-checked:text-white">km/h</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+          <h2 class="text-lg font-semibold text-white mb-1">Original Pass-By Parameters</h2>
+          <p class="text-xs text-slate-500 mb-4">Used to invert Doppler and 1/R attenuation from the upload before synthesis.</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="v1" id="v1-label">Speed v₁ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+              <input id="v1" name="v1" type="number" step="any" value="{{ v1_display }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="h1">CPA distance h₁ (m)</label>
+              <input id="h1" name="h1" type="number" step="any" value="{{ params.h1 if params else 10 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="t_cpa1">CPA time t_CPA₁ (s)</label>
+              <input id="t_cpa1" name="t_cpa1" type="number" step="any" value="{{ params.t_cpa1 if params else 2 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+          <h2 class="text-lg font-semibold text-white mb-4">Vehicle Model</h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="vehicle_length">Length L (m)</label>
+              <input id="vehicle_length" name="vehicle_length" type="number" step="any" value="{{ params.vehicle_length if params else 4.5 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="num_emitters">Emitters N</label>
+              <input id="num_emitters" name="num_emitters" type="number" min="1" step="1" value="{{ params.num_emitters if params else 3 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Rendering Parameters</h2>
+        <div class="grid md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="v2" id="v2-label">Speed v₂ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+            <input id="v2" name="v2" type="number" step="any" value="{{ v2_display }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="h2">CPA distance h₂ (m)</label>
+            <input id="h2" name="h2" type="number" step="any" value="{{ params.h2 if params else 8 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="t_cpa2">CPA time t_CPA₂ (s)</label>
+            <input id="t_cpa2" name="t_cpa2" type="number" step="any" value="{{ params.t_cpa2 if params else 2.5 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="t_out">Output duration T_out (s)</label>
+            <input id="t_out" name="t_out" type="number" step="any" value="{{ params.t_out if params else 6 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+        <h2 class="text-lg font-semibold text-white mb-1">Plot Settings</h2>
+        <p class="text-xs text-slate-500 mb-4">Display only — does not affect audio synthesis.</p>
+        <label class="block text-sm text-slate-300 mb-2" for="freq_max">
+          Spectrogram frequency limit: <span id="freq-max-value">{{ freq_max | default(10000) | int }}</span> Hz
+        </label>
+        <input
+          id="freq_max"
+          name="freq_max"
+          type="range"
+          min="1000"
+          max="22050"
+          step="250"
+          value="{{ freq_max | default(10000) | int }}"
+          class="w-full accent-blue-500"
+        >
+        <div class="flex justify-between text-xs text-slate-500 mt-1">
+          <span>1 kHz</span>
+          <span>22.05 kHz</span>
+        </div>
+      </section>
+
+      <button
+        type="submit"
+        class="w-full md:w-auto rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition"
+      >
+        Generate Pass-By Audio
+      </button>
+    </form>
+
+    {% if success %}
+    <section class="mt-12 space-y-8">
+      <div class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-6">
+        <h2 class="text-xl font-semibold text-emerald-300 mb-4">Generated Audio</h2>
+        <audio controls class="w-full mb-6" src="{{ audio_url }}"></audio>
+
+        <form action="{{ url_for('update_freq_max') }}" method="post" class="mb-6 rounded-lg border border-slate-700/60 bg-slate-950/40 p-4">
+          <label class="block text-sm text-slate-300 mb-2" for="result-freq-max">
+            Spectrogram Y-axis max: <span id="result-freq-max-value">{{ freq_max | int }}</span> Hz
+          </label>
+          <input
+            id="result-freq-max"
+            name="freq_max"
+            type="range"
+            min="1000"
+            max="22050"
+            step="250"
+            value="{{ freq_max | int }}"
+            class="w-full accent-blue-500 mb-3"
+          >
+          <button
+            type="submit"
+            class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600"
+          >
+            Update spectrogram plots
+          </button>
+          <p class="text-xs text-slate-500 mt-2">Re-draws spectrogram images only — physics and audio stay the same.</p>
+        </form>
+
+        <form action="{{ url_for('download_bundle') }}" method="post" class="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div class="flex-1">
+            <label class="block text-sm text-slate-300 mb-2" for="bundle_name">Export file name</label>
+            <input
+              id="bundle_name"
+              name="bundle_name"
+              type="text"
+              placeholder="my_pass_by_export"
+              class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            >
+          </div>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
+          >
+            Download all (ZIP)
+          </button>
+        </form>
+        <p class="text-xs text-slate-500 mt-2">Includes generated WAV and all analysis plots.</p>
+      </div>
+
+      <div>
+        <h2 class="text-xl font-semibold text-white mb-4">Analysis Plots</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Uploaded waveform</figcaption>
+            <img src="{{ plots.uploaded_waveform }}" alt="Uploaded waveform" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Uploaded spectrogram</figcaption>
+            <img src="{{ plots.uploaded_spectrogram }}" alt="Uploaded spectrogram" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-slate-400 mb-2">Observed vs inverted PSD comparison</figcaption>
+            <img src="{{ plots.psd_comparison }}" alt="PSD comparison" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Observed PSD (raw)</figcaption>
+            <img src="{{ plots.observed_psd }}" alt="Observed PSD" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Intrinsic PSD (inverted, used for synthesis)</figcaption>
+            <img src="{{ plots.intrinsic_psd }}" alt="Intrinsic PSD" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-slate-400 mb-2">Inverted intrinsic spectrogram</figcaption>
+            <img src="{{ plots.inverted_spectrogram }}" alt="Inverted spectrogram" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Vehicle geometry</figcaption>
+            <img src="{{ plots.vehicle_geometry }}" alt="Vehicle geometry" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Observer geometry</figcaption>
+            <img src="{{ plots.observer_geometry }}" alt="Observer geometry" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Retarded time vs observer time</figcaption>
+            <img src="{{ plots.retarded_time }}" alt="Retarded time" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Radial velocity vs time</figcaption>
+            <img src="{{ plots.radial_velocity }}" alt="Radial velocity" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Doppler factor vs time</figcaption>
+            <img src="{{ plots.doppler_factor }}" alt="Doppler factor" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Propagation distance vs time</figcaption>
+            <img src="{{ plots.propagation_distance }}" alt="Propagation distance" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Generated waveform</figcaption>
+            <img src="{{ plots.generated_waveform }}" alt="Generated waveform" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-slate-400 mb-2">Generated spectrogram</figcaption>
+            <img src="{{ plots.generated_spectrogram }}" alt="Generated spectrogram" class="w-full rounded">
+          </figure>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  {% elif active_tab == 'spectrograms' %}
+
+  <header>
+    <h1>Spectrogram Explorer</h1>
+    <p class="sub">Upload WAV or MP3 — ten time–frequency views in a 2×5 grid</p>
+  </header>
+
+  <main>
+    <form class="upload" method="post" enctype="multipart/form-data" action="{{ url_for('spectrograms') }}">
+      <input type="file" name="audio" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" required />
+      <label class="fmax" for="fmax_hz">
+        Max frequency
+        <select id="fmax_hz" name="fmax_hz" title="Upper frequency limit for Hz-based plots">
+          {% for preset in fmax_presets %}
+          <option value="{{ preset }}" {% if preset == fmax_hz|int %}selected{% endif %}>{{ preset }} Hz</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="fmax" for="fmax_hz_custom">
+        or
+        <input
+          type="number"
+          id="fmax_hz_custom"
+          name="fmax_hz_custom"
+          min="{{ 100 }}"
+          max="{{ nyquist_hz }}"
+          step="50"
+          placeholder="Custom"
+          value="{% if fmax_hz|int not in fmax_presets %}{{ fmax_hz }}{% endif %}"
+        />
+        Hz
+      </label>
+
+      <div class="stft-group">
+        <span class="stft-group-title">STFT / Mel / Reassigned</span>
+        <label class="fmax" for="stft_n_fft">
+          Window size (n_fft)
+          <select id="stft_n_fft" name="stft_n_fft">
+            {% for n in n_fft_choices %}
+            <option value="{{ n }}" {% if n == stft_n_fft %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="fmax" for="stft_hop">
+          Hop length
+          <select id="stft_hop" name="stft_hop">
+            {% for h in hop_choices %}
+            <option value="{{ h }}" {% if h == stft_hop %}selected{% endif %}>{{ h }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <div class="stft-group">
+        <span class="stft-group-title">Wideband STFT — short window presets</span>
+        <label class="fmax" for="wb_preset">
+          Time-resolution profile
+          <select id="wb_preset" name="wb_preset" title="Always shorter than the reference STFT window">
+            {% for key, preset in wb_presets.items() %}
+            <option value="{{ key }}" {% if key == wb_preset %}selected{% endif %}>{{ preset[0] }} ({{ preset[1] }} / {{ preset[2] }})</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <div class="stft-group">
+        <span class="stft-group-title">Narrowband STFT — long window presets</span>
+        <label class="fmax" for="nb_preset">
+          Frequency-resolution profile
+          <select id="nb_preset" name="nb_preset" title="Always longer than the reference STFT window">
+            {% for key, preset in nb_presets.items() %}
+            <option value="{{ key }}" {% if key == nb_preset %}selected{% endif %}>{{ preset[0] }} ({{ preset[1] }} / {{ preset[2] }})</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <label class="fmax" for="stft_window">
+        Window type (all STFT-based)
+        <select id="stft_window" name="stft_window" title="Analysis window applied to STFT, Mel, and Reassigned plots">
+          {% for key, label in window_choices.items() %}
+          <option value="{{ key }}" {% if key == stft_window %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <button type="submit">Generate spectrograms</button>
+      {% if filename %}
+      <span class="meta">File: {{ filename }}{% if duration_s %} · {{ "%.1f"|format(duration_s) }} s analyzed{% endif %}{% if panels %} · max {{ fmax_hz }} Hz{% endif %} (max {{ 90 }} s)</span>
+      {% endif %}
+    </form>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if panels %}
+    <section class="grid" aria-label="Spectrogram grid">
+      {% for p in panels %}
+      <article class="cell">
+        <h2>{{ p.title }}</h2>
+        <img src="data:image/png;base64,{{ p.image }}" alt="{{ p.title }}" loading="lazy" />
+        {% if p.labels %}
+        <dl class="cell-params">
+          {% for key, value in p.labels %}
+          <dt>{{ key }}</dt>
+          <dd>{{ value }}</dd>
+          {% endfor %}
+        </dl>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% else %}
+    <p class="placeholder">Choose an audio file and click <strong>Generate spectrograms</strong>.</p>
+    {% endif %}
+  </main>
+
+  <script>
+    document.getElementById("fmax_hz")?.addEventListener("change", function () {
+      const custom = document.getElementById("fmax_hz_custom");
+      if (custom) custom.value = "";
+    });
+  </script>
+
+  {% elif active_tab == 'compare' %}
+
+  <header>
+    <h1>Audio Comparison</h1>
+    <p class="sub">Upload two clips to compare spectrograms, amplitude envelopes, and overlap metrics.</p>
+  </header>
+
+  <main>
+    <form class="upload compare-form" method="post" enctype="multipart/form-data" action="{{ url_for('compare_audio') }}">
+      <div class="compare-grid">
+        <label class="fmax file-label" for="file_a">
+          Audio Clip A
+          <input type="file" id="file_a" name="file_a" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" required />
+        </label>
+        <label class="fmax file-label" for="file_b">
+          Audio Clip B
+          <input type="file" id="file_b" name="file_b" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" required />
+        </label>
+      </div>
+      <label class="fmax" for="max_y_freq">
+        Maximum Y-axis frequency (Hz)
+        <input
+          type="number"
+          id="max_y_freq"
+          name="max_y_freq"
+          min="100"
+          max="11025"
+          step="100"
+          value="{{ max_y_freq | default(2500) }}"
+        />
+      </label>
+      <button type="submit">Run comparative analysis</button>
+      {% if filename_a and filename_b %}
+      <span class="meta">Comparing: {{ filename_a }} vs {{ filename_b }}</span>
+      {% endif %}
+    </form>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if compare_plots and compare_metrics %}
+    <section class="compare-result" aria-label="Comparison results">
+      <div class="compare-columns">
+        <div class="compare-col">
+          <h3 class="clip-a">Clip A — {{ filename_a }}</h3>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.waveform_a }}" alt="Waveform A" />
+          </div>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.spectrogram_a }}" alt="Spectrogram A" />
+          </div>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.rms_a }}" alt="RMS envelope A" />
+          </div>
+        </div>
+        <div class="compare-col">
+          <h3 class="clip-b">Clip B — {{ filename_b }}</h3>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.waveform_b }}" alt="Waveform B" />
+          </div>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.spectrogram_b }}" alt="Spectrogram B" />
+          </div>
+          <div class="compare-panel">
+            <img src="data:image/png;base64,{{ compare_plots.rms_b }}" alt="RMS envelope B" />
+          </div>
+        </div>
+      </div>
+      <dl class="metric-grid">
+        <div class="metric-card">
+          <dt>Duration A (s)</dt>
+          <dd>{{ "%.2f"|format(compare_metrics.duration_a_sec) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Duration B (s)</dt>
+          <dd>{{ "%.2f"|format(compare_metrics.duration_b_sec) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Max amplitude A</dt>
+          <dd>{{ "%.4f"|format(compare_metrics.peak_a) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Max amplitude B</dt>
+          <dd>{{ "%.4f"|format(compare_metrics.peak_b) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Dominant Freq A (Hz)</dt>
+          <dd>{{ "%.1f"|format(compare_metrics.dominant_freq_a_hz) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Dominant Freq B (Hz)</dt>
+          <dd>{{ "%.1f"|format(compare_metrics.dominant_freq_b_hz) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Envelope Correlation (%)</dt>
+          <dd>{{ "%.2f"|format(compare_metrics.envelope_correlation_percent) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Spectral Overlap (%)</dt>
+          <dd>{{ "%.2f"|format(compare_metrics.spectral_overlap_percent) }}</dd>
+        </div>
+        <div class="metric-card">
+          <dt>Overall Match (%)</dt>
+          <dd>{{ "%.2f"|format(compare_metrics.overall_similarity_percent) }}</dd>
+        </div>
+      </dl>
+    </section>
+    {% else %}
+    <p class="placeholder">Select two audio files and click <strong>Run comparative analysis</strong>.</p>
+    {% endif %}
+  </main>
+  {% endif %}
+
+  {% if active_tab|default('doppler') == 'doppler' %}
+  <script>
+    (function () {
+      const KMH_PER_MPS = 3.6;
+      const speedInputs = ["v1", "v2"];
+      let currentUnit = "{{ speed_unit | default('mps') }}";
+
+      function bindFreqSlider(sliderId, labelId) {
+        const slider = document.getElementById(sliderId);
+        const label = document.getElementById(labelId);
+        if (!slider || !label) return;
+        slider.addEventListener("input", () => {
+          label.textContent = slider.value;
+        });
+      }
+
+      bindFreqSlider("freq_max", "freq-max-value");
+      bindFreqSlider("result-freq-max", "result-freq-max-value");
+
+      function updateLabels(unit) {
+        const suffix = unit === "kmph" ? "km/h" : "m/s";
+        document.getElementById("v1-label").textContent = "Speed v₁ (" + suffix + ")";
+        document.getElementById("v2-label").textContent = "Speed v₂ (" + suffix + ")";
+      }
+
+      document.querySelectorAll('input[name="speed_unit"]').forEach((radio) => {
+        radio.addEventListener("change", (event) => {
+          const newUnit = event.target.value;
+          if (newUnit === currentUnit) return;
+
+          speedInputs.forEach((id) => {
+            const el = document.getElementById(id);
+            let value = parseFloat(el.value);
+            if (Number.isNaN(value)) return;
+
+            if (currentUnit === "mps" && newUnit === "kmph") {
+              value *= KMH_PER_MPS;
+            } else if (currentUnit === "kmph" && newUnit === "mps") {
+              value /= KMH_PER_MPS;
+            }
+
+            el.value = Number(value.toFixed(3));
+          });
+
+          currentUnit = newUnit;
+          updateLabels(newUnit);
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

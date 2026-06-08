@@ -1,0 +1,14 @@
+.venv/
+venv/
+
+__pycache__/
+*.py[cod]
+
+renders/
+static/
+uploads/
+
+DopplerSim_presentation.tex
+DopplerSim_comparison_presentation.tex
+images/
+audio/
