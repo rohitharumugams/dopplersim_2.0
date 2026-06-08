@@ -20,6 +20,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib-doppler"))
+
 import librosa
 import librosa.display
 import matplotlib
