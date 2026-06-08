@@ -33,6 +33,7 @@ import pywt
 import soundfile as sf
 from flask import Flask, render_template, request, send_file, send_from_directory, session, url_for
 from scipy.interpolate import interp1d
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -52,9 +53,13 @@ MAX_FREQ_LIMIT = 22050.0
 N_FFT = 4096
 HOP_LENGTH = 512
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path="/assets")
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "doppler-sim-dev-key")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+if os.environ.get("RENDER") or os.environ.get("FLASK_ENV") == "production":
+    app.config["SESSION_COOKIE_SECURE"] = True
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 
 @dataclass
@@ -1025,6 +1030,11 @@ def resolve_upload_path() -> tuple[Path | None, str | None, str | None]:
     return upload_path, session.get("upload_filename"), None
 
 
+@app.route("/health")
+def health():
+    return "ok", 200
+
+
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html", **form_context())
@@ -1061,60 +1071,67 @@ def generate():
     uploaded_plot_copy = audio.copy()
     uploaded_sr = sr
 
-    freqs, psd_observed, psd_inverted, stft, stft_times = estimate_source_signature(
-        audio,
-        sr,
-        params,
-    )
-    del audio
+    try:
+        freqs, psd_observed, psd_inverted, stft, stft_times = estimate_source_signature(
+            audio,
+            sr,
+            params,
+        )
+        del audio
 
-    generated, quantities, _ = render_pass_by(
-        freqs,
-        psd_inverted,
-        params,
-        uploaded_plot_copy,
-        uploaded_sr,
-    )
+        generated, quantities, _ = render_pass_by(
+            freqs,
+            psd_inverted,
+            params,
+            uploaded_plot_copy,
+            uploaded_sr,
+        )
 
-    output_name = f"{uuid.uuid4().hex}.wav"
-    output_path = GENERATED_DIR / output_name
-    sf.write(output_path, generated, OUTPUT_SR, subtype="PCM_16")
+        output_name = f"{uuid.uuid4().hex}.wav"
+        output_path = GENERATED_DIR / output_name
+        sf.write(output_path, generated, OUTPUT_SR, subtype="PCM_16")
 
-    render_id = uuid.uuid4().hex
-    plot_dir = PLOTS_DIR / render_id
-    plots = generate_all_plots(
-        uploaded_plot_copy,
-        uploaded_sr,
-        generated,
-        freqs,
-        psd_observed,
-        psd_inverted,
-        stft,
-        stft_times,
-        params,
-        quantities,
-        plot_dir,
-        freq_max=freq_max,
-    )
+        render_id = uuid.uuid4().hex
+        plot_dir = PLOTS_DIR / render_id
+        plots = generate_all_plots(
+            uploaded_plot_copy,
+            uploaded_sr,
+            generated,
+            freqs,
+            psd_observed,
+            psd_inverted,
+            stft,
+            stft_times,
+            params,
+            quantities,
+            plot_dir,
+            freq_max=freq_max,
+        )
 
-    save_render_state(
-        render_id,
-        output_name=output_name,
-        upload_filename=upload_filename,
-        speed_unit=speed_unit,
-        freq_max=freq_max,
-        params=params,
-        plots=plots,
-        uploaded_audio=uploaded_plot_copy,
-        uploaded_sr=uploaded_sr,
-        generated_audio=generated,
-        freqs=freqs,
-        psd_observed=psd_observed,
-        psd_inverted=psd_inverted,
-        stft=stft,
-        stft_times=stft_times,
-        quantities=quantities,
-    )
+        save_render_state(
+            render_id,
+            output_name=output_name,
+            upload_filename=upload_filename,
+            speed_unit=speed_unit,
+            freq_max=freq_max,
+            params=params,
+            plots=plots,
+            uploaded_audio=uploaded_plot_copy,
+            uploaded_sr=uploaded_sr,
+            generated_audio=generated,
+            freqs=freqs,
+            psd_observed=psd_observed,
+            psd_inverted=psd_inverted,
+            stft=stft,
+            stft_times=stft_times,
+            quantities=quantities,
+        )
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Generation failed: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max),
+        )
 
     meta = {
         "output_name": output_name,
@@ -1187,17 +1204,17 @@ def download_bundle():
     )
 
 
-@app.route("/static/plots/<render_id>/<path:filename>")
+@app.route("/media/plots/<render_id>/<path:filename>")
 def plot_file(render_id: str, filename: str):
     return send_from_directory(PLOTS_DIR / render_id, filename)
 
 
-@app.route("/static/generated/<path:filename>")
+@app.route("/media/generated/<path:filename>")
 def generated_file(filename: str):
     return send_from_directory(GENERATED_DIR, filename)
 
 
-@app.route("/static/compare/<path:filename>")
+@app.route("/media/compare/<path:filename>")
 def compare_file(filename: str):
     return send_from_directory(COMPARE_DIR, filename)
 
