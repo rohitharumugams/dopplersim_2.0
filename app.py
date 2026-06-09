@@ -57,9 +57,11 @@ app = Flask(__name__, static_url_path="/assets")
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "doppler-sim-dev-key")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-if os.environ.get("RENDER") or os.environ.get("FLASK_ENV") == "production":
+# Secure cookies only when serving over HTTPS (not for http://IP/ demos).
+if os.environ.get("FORCE_HTTPS", "").lower() in ("1", "true", "yes"):
     app.config["SESSION_COOKIE_SECURE"] = True
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+if os.environ.get("BEHIND_PROXY", "").lower() in ("1", "true", "yes"):
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 
 @dataclass
@@ -2229,4 +2231,6 @@ def compare_audio():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5003)
+    port = int(os.environ.get("PORT", "5003"))
+    debug = os.environ.get("FLASK_DEBUG", "1").lower() in ("1", "true", "yes")
+    app.run(debug=debug, host="0.0.0.0", port=port)
