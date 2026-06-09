@@ -7,21 +7,13 @@ LINUX_USER="${SUDO_USER:-$USER}"
 
 echo "==> Installing system packages..."
 sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip nginx libsndfile1
+sudo apt-get install -y python3 python3-venv python3-pip libsndfile1
 
 echo "==> Creating virtualenv and installing Python deps..."
 cd "$REPO_DIR"
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
-
-echo "==> Installing nginx site..."
-sudo cp "$REPO_DIR/deploy/nginx-dopplersim.conf" /etc/nginx/sites-available/dopplersim
-sudo ln -sf /etc/nginx/sites-available/dopplersim /etc/nginx/sites-enabled/dopplersim
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl enable nginx
-sudo systemctl restart nginx
 
 echo "==> Installing systemd service..."
 SECRET_KEY="$(openssl rand -hex 32)"
@@ -37,6 +29,7 @@ sudo systemctl enable dopplersim
 sudo systemctl restart dopplersim
 
 echo ""
-echo "Done. Open http://YOUR_VM_EXTERNAL_IP/ in a browser."
+echo "Done. Open http://YOUR_VM_EXTERNAL_IP:5003/ in a browser."
+echo "GCP firewall: allow tcp:5003 to instances tagged dopplersim."
 echo "Check status: sudo systemctl status dopplersim"
 echo "View logs:    sudo journalctl -u dopplersim -f"

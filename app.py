@@ -33,7 +33,6 @@ import pywt
 import soundfile as sf
 from flask import Flask, render_template, request, send_file, send_from_directory, session, url_for
 from scipy.interpolate import interp1d
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -57,11 +56,8 @@ app = Flask(__name__, static_url_path="/assets")
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "doppler-sim-dev-key")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-# Secure cookies only when serving over HTTPS (not for http://IP/ demos).
 if os.environ.get("FORCE_HTTPS", "").lower() in ("1", "true", "yes"):
     app.config["SESSION_COOKIE_SECURE"] = True
-if os.environ.get("BEHIND_PROXY", "").lower() in ("1", "true", "yes"):
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 
 @dataclass

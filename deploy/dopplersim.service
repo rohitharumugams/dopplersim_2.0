@@ -9,9 +9,8 @@ Group=YOUR_LINUX_USER
 WorkingDirectory=/home/YOUR_LINUX_USER/dopplersim_2.0
 Environment=PORT=5003
 Environment=FLASK_DEBUG=0
-Environment=BEHIND_PROXY=1
 Environment=FLASK_SECRET_KEY=CHANGE_ME_TO_A_LONG_RANDOM_STRING
-ExecStart=/home/YOUR_LINUX_USER/dopplersim_2.0/.venv/bin/gunicorn app:app --bind 127.0.0.1:5003 --workers 1 --timeout 300
+ExecStart=/home/YOUR_LINUX_USER/dopplersim_2.0/.venv/bin/python app.py
 Restart=on-failure
 RestartSec=5
 
