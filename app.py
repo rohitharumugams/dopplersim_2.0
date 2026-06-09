@@ -9,6 +9,7 @@ retarded-time physics so Doppler emerges from s_obs(t) = s_src(t_r(t)) / R(t).
 from __future__ import annotations
 
 import base64
+import gc
 import json
 import os
 import re
@@ -1978,15 +1979,37 @@ def spectrograms():
 # Audio Comparison (two-clip spectrogram comparison tab)
 # ---------------------------------------------------------------------------
 
-COMPARE_SR = 22050
+COMPARE_SR = 16000
+COMPARE_MAX_DURATION_S = 60.0
 COMPARE_DEFAULT_MAX_Y_FREQ = 2500.0
 COMPARE_ALLOWED_EXT = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+COMPARE_WAVEFORM_MAX_POINTS = 12000
 
-
-COMPARE_SPEC_N_FFT = 4096
-COMPARE_SPEC_HOP = 64
-COMPARE_SPEC_WIN = 4096
+# Larger hop keeps STFT time frames small on long clips (main memory saver).
+COMPARE_SPEC_N_FFT = 2048
+COMPARE_SPEC_HOP = 512
+COMPARE_SPEC_WIN = 2048
 COMPARE_SPEC_WINDOW = "hann"
+
+
+@dataclass
+class _CompareClipAnalysis:
+    y: np.ndarray
+    duration_sec: float
+    peak: float
+    rms: np.ndarray
+    rms_times: np.ndarray
+    spec_profile: np.ndarray
+    spec_freqs: np.ndarray
+    d_db: np.ndarray
+
+
+def _compare_fig_to_b64(fig: plt.Figure) -> str:
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=72, bbox_inches="tight", facecolor="#0f1117")
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("ascii")
 
 
 def _compare_style_ax(ax: plt.Axes, *, title: str = "") -> None:
@@ -1998,25 +2021,40 @@ def _compare_style_ax(ax: plt.Axes, *, title: str = "") -> None:
     ax.yaxis.label.set_color("#aab0c0")
 
 
-def _compare_plot_waveform(y: np.ndarray, sr: int, color: str, peak: float) -> str:
-    fig, ax = plt.subplots(figsize=(6.8, 2.4), facecolor="#0f1117")
-    times = np.arange(len(y), dtype=np.float64) / float(sr)
-    ax.plot(times, y, color=color, linewidth=0.5, alpha=0.95)
-    ax.axhline(peak, color=color, linestyle="--", linewidth=0.6, alpha=0.45)
-    ax.axhline(-peak, color=color, linestyle="--", linewidth=0.6, alpha=0.45)
-    _compare_style_ax(ax, title=f"Waveform (peak {peak:.4f})")
-    ax.set_ylabel("Amplitude", fontsize=9)
-    ax.set_xlabel("Time (s)", fontsize=9)
-    margin = max(peak * 1.08, 1e-6)
-    ax.set_ylim(-margin, margin)
-    ax.set_xlim(0.0, max(float(len(y)) / float(sr), 1e-6))
-    ax.grid(True, axis="y", linestyle=":", alpha=0.35)
-    fig.tight_layout()
-    return specg_fig_to_b64(fig)
+def _compare_downsample_for_plot(y: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
+    if len(y) <= COMPARE_WAVEFORM_MAX_POINTS:
+        times = np.arange(len(y), dtype=np.float32) / float(sr)
+        return y, times
+    step = int(np.ceil(len(y) / COMPARE_WAVEFORM_MAX_POINTS))
+    y_ds = y[::step]
+    times = np.arange(len(y_ds), dtype=np.float32) * (float(step) / float(sr))
+    return y_ds, times
 
 
-def _compare_plot_spectrogram(y: np.ndarray, sr: int, max_y_freq: float) -> str:
-    fig, ax = plt.subplots(figsize=(6.8, 3.6), facecolor="#0f1117")
+def compare_load_audio(path: str) -> tuple[np.ndarray, float]:
+    duration = float(librosa.get_duration(path=path))
+    y, _ = librosa.load(
+        path,
+        sr=COMPARE_SR,
+        mono=True,
+        duration=COMPARE_MAX_DURATION_S,
+        dtype=np.float32,
+    )
+    return y, duration
+
+
+def _compare_analyze_clip(y: np.ndarray, duration_sec: float) -> _CompareClipAnalysis:
+    sr = COMPARE_SR
+    peak = float(np.max(np.abs(y)))
+
+    rms = librosa.feature.rms(
+        y=y,
+        frame_length=COMPARE_SPEC_N_FFT,
+        hop_length=COMPARE_SPEC_HOP,
+        center=True,
+    )[0]
+    rms_times = librosa.times_like(rms, sr=sr, hop_length=COMPARE_SPEC_HOP)
+
     stft = librosa.stft(
         y,
         n_fft=COMPARE_SPEC_N_FFT,
@@ -2024,19 +2062,59 @@ def _compare_plot_spectrogram(y: np.ndarray, sr: int, max_y_freq: float) -> str:
         win_length=COMPARE_SPEC_WIN,
         window=COMPARE_SPEC_WINDOW,
     )
-    s_power = np.abs(stft) ** 2
-    d_db = librosa.power_to_db(s_power, ref=np.max)
-    vmax = float(np.max(d_db))
+    magnitude = np.abs(stft, dtype=np.float32)
+    del stft
+
+    spec_profile = np.mean(magnitude, axis=1)
+    spec_freqs = librosa.fft_frequencies(sr=sr, n_fft=COMPARE_SPEC_N_FFT)
+    power = np.square(magnitude, dtype=np.float32)
+    del magnitude
+    d_db = librosa.power_to_db(power, ref=np.max)
+    del power
+
+    return _CompareClipAnalysis(
+        y=y,
+        duration_sec=duration_sec,
+        peak=peak,
+        rms=rms,
+        rms_times=rms_times,
+        spec_profile=spec_profile,
+        spec_freqs=spec_freqs,
+        d_db=d_db,
+    )
+
+
+def _compare_plot_waveform(analysis: _CompareClipAnalysis, color: str) -> str:
+    fig, ax = plt.subplots(figsize=(6.8, 2.4), facecolor="#0f1117")
+    y_plot, times = _compare_downsample_for_plot(analysis.y, COMPARE_SR)
+    peak = analysis.peak
+    ax.plot(times, y_plot, color=color, linewidth=0.5, alpha=0.95)
+    ax.axhline(peak, color=color, linestyle="--", linewidth=0.6, alpha=0.45)
+    ax.axhline(-peak, color=color, linestyle="--", linewidth=0.6, alpha=0.45)
+    _compare_style_ax(ax, title=f"Waveform (peak {peak:.4f})")
+    ax.set_ylabel("Amplitude", fontsize=9)
+    ax.set_xlabel("Time (s)", fontsize=9)
+    margin = max(peak * 1.08, 1e-6)
+    ax.set_ylim(-margin, margin)
+    ax.set_xlim(0.0, max(float(len(analysis.y)) / float(COMPARE_SR), 1e-6))
+    ax.grid(True, axis="y", linestyle=":", alpha=0.35)
+    fig.tight_layout()
+    return _compare_fig_to_b64(fig)
+
+
+def _compare_plot_spectrogram(analysis: _CompareClipAnalysis, max_y_freq: float) -> str:
+    fig, ax = plt.subplots(figsize=(6.8, 3.6), facecolor="#0f1117")
+    vmax = float(np.max(analysis.d_db))
     vmin = vmax - 80.0
     librosa.display.specshow(
-        d_db,
-        sr=sr,
+        analysis.d_db,
+        sr=COMPARE_SR,
         hop_length=COMPARE_SPEC_HOP,
         x_axis="time",
         y_axis="hz",
         ax=ax,
         cmap="magma",
-        shading="gouraud",
+        shading="auto",
         rasterized=True,
         vmin=vmin,
         vmax=vmax,
@@ -2047,63 +2125,36 @@ def _compare_plot_spectrogram(y: np.ndarray, sr: int, max_y_freq: float) -> str:
     ax.set_ylabel("Frequency (Hz)", fontsize=9)
     ax.set_xlabel("Time (s)", fontsize=9)
     fig.tight_layout()
-    return specg_fig_to_b64(fig)
+    img = _compare_fig_to_b64(fig)
+    return img
 
 
-def _compare_plot_rms(y: np.ndarray, sr: int, color: str) -> str:
+def _compare_plot_rms(analysis: _CompareClipAnalysis, color: str) -> str:
     fig, ax = plt.subplots(figsize=(6.8, 2.0), facecolor="#0f1117")
-    rms = librosa.feature.rms(
-        y=y,
-        frame_length=COMPARE_SPEC_N_FFT,
-        hop_length=COMPARE_SPEC_HOP,
-        center=True,
-    )[0]
-    times = librosa.times_like(rms, sr=sr, hop_length=COMPARE_SPEC_HOP)
+    times = analysis.rms_times
+    rms = analysis.rms
     bar_width = (
         (float(times[1] - times[0]) * 0.9)
         if len(times) > 1
-        else (float(COMPARE_SPEC_HOP) / float(sr))
+        else (float(COMPARE_SPEC_HOP) / float(COMPARE_SR))
     )
     ax.bar(times, rms, width=bar_width, color=color, edgecolor="none", alpha=0.9)
     _compare_style_ax(ax, title="RMS envelope")
     ax.set_ylabel("RMS", fontsize=9)
     ax.set_xlabel("Time (s)", fontsize=9)
     ax.set_ylim(0, max(1e-6, float(np.max(rms)) * 1.15))
-    ax.set_xlim(0.0, max(float(len(y)) / float(sr), 1e-6))
+    ax.set_xlim(0.0, max(float(len(analysis.y)) / float(COMPARE_SR), 1e-6))
     ax.grid(True, axis="y", linestyle=":", alpha=0.35)
     fig.tight_layout()
-    return specg_fig_to_b64(fig)
-
-
-def build_compare_plots(
-    y_a: np.ndarray,
-    y_b: np.ndarray,
-    sr: int,
-    max_y_freq: float,
-) -> Dict[str, str]:
-    max_y_freq = float(max_y_freq) if max_y_freq else COMPARE_DEFAULT_MAX_Y_FREQ
-    if max_y_freq <= 0:
-        max_y_freq = COMPARE_DEFAULT_MAX_Y_FREQ
-    peak_a = float(np.max(np.abs(y_a)))
-    peak_b = float(np.max(np.abs(y_b)))
-    return {
-        "waveform_a": _compare_plot_waveform(y_a, sr, "#6c9eff", peak_a),
-        "waveform_b": _compare_plot_waveform(y_b, sr, "#f0883e", peak_b),
-        "spectrogram_a": _compare_plot_spectrogram(y_a, sr, max_y_freq),
-        "spectrogram_b": _compare_plot_spectrogram(y_b, sr, max_y_freq),
-        "rms_a": _compare_plot_rms(y_a, sr, "#6c9eff"),
-        "rms_b": _compare_plot_rms(y_b, sr, "#f0883e"),
-    }
+    return _compare_fig_to_b64(fig)
 
 
 def compute_audio_comparison_metrics(
-    y_a: np.ndarray, y_b: np.ndarray, sr: int
+    analysis_a: _CompareClipAnalysis,
+    analysis_b: _CompareClipAnalysis,
 ) -> Dict[str, float]:
-    n_fft = 2048
-    hop_length = 256
-
-    rms_a = librosa.feature.rms(y=y_a, frame_length=n_fft, hop_length=hop_length)[0]
-    rms_b = librosa.feature.rms(y=y_b, frame_length=n_fft, hop_length=hop_length)[0]
+    rms_a = analysis_a.rms
+    rms_b = analysis_b.rms
     n_env = min(len(rms_a), len(rms_b))
     rms_a = rms_a[:n_env]
     rms_b = rms_b[:n_env]
@@ -2122,27 +2173,24 @@ def compute_audio_comparison_metrics(
         env_corr = 0.0
     env_corr_pct = float(np.clip((env_corr + 1.0) * 50.0, 0.0, 100.0))
 
-    stft_a = np.abs(librosa.stft(y_a, n_fft=n_fft, hop_length=hop_length))
-    stft_b = np.abs(librosa.stft(y_b, n_fft=n_fft, hop_length=hop_length))
-    spec_a = np.mean(stft_a, axis=1)
-    spec_b = np.mean(stft_b, axis=1)
+    spec_a = analysis_a.spec_profile
+    spec_b = analysis_b.spec_profile
     spec_a_norm = spec_a / (np.sum(spec_a) + 1e-9)
     spec_b_norm = spec_b / (np.sum(spec_b) + 1e-9)
     spectral_overlap = float(np.sum(np.minimum(spec_a_norm, spec_b_norm)) * 100.0)
 
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    dom_freq_a = float(freqs[int(np.argmax(spec_a))]) if len(spec_a) else 0.0
-    dom_freq_b = float(freqs[int(np.argmax(spec_b))]) if len(spec_b) else 0.0
+    dom_freq_a = float(analysis_a.spec_freqs[int(np.argmax(spec_a))]) if len(spec_a) else 0.0
+    dom_freq_b = float(analysis_b.spec_freqs[int(np.argmax(spec_b))]) if len(spec_b) else 0.0
 
     overall_similarity = float(
         np.clip((spectral_overlap * 0.55) + (amp_overlap * 0.30) + (env_corr_pct * 0.15), 0.0, 100.0)
     )
 
     return {
-        "duration_a_sec": float(len(y_a) / sr),
-        "duration_b_sec": float(len(y_b) / sr),
-        "peak_a": float(np.max(np.abs(y_a))),
-        "peak_b": float(np.max(np.abs(y_b))),
+        "duration_a_sec": analysis_a.duration_sec,
+        "duration_b_sec": analysis_b.duration_sec,
+        "peak_a": analysis_a.peak,
+        "peak_b": analysis_b.peak,
         "dominant_freq_a_hz": dom_freq_a,
         "dominant_freq_b_hz": dom_freq_b,
         "envelope_correlation_percent": env_corr_pct,
@@ -2152,9 +2200,24 @@ def compute_audio_comparison_metrics(
     }
 
 
-def compare_load_audio(path: str) -> np.ndarray:
-    y, _ = librosa.load(path, sr=COMPARE_SR, mono=True)
-    return y.astype(np.float32)
+def build_compare_plots(
+    analysis_a: _CompareClipAnalysis,
+    analysis_b: _CompareClipAnalysis,
+    max_y_freq: float,
+) -> Dict[str, str]:
+    max_y_freq = float(max_y_freq) if max_y_freq else COMPARE_DEFAULT_MAX_Y_FREQ
+    if max_y_freq <= 0:
+        max_y_freq = COMPARE_DEFAULT_MAX_Y_FREQ
+
+    plots = {
+        "waveform_a": _compare_plot_waveform(analysis_a, "#6c9eff"),
+        "waveform_b": _compare_plot_waveform(analysis_b, "#f0883e"),
+        "spectrogram_a": _compare_plot_spectrogram(analysis_a, max_y_freq),
+        "spectrogram_b": _compare_plot_spectrogram(analysis_b, max_y_freq),
+        "rms_a": _compare_plot_rms(analysis_a, "#6c9eff"),
+        "rms_b": _compare_plot_rms(analysis_b, "#f0883e"),
+    }
+    return plots
 
 
 @app.route("/compare", methods=["GET", "POST"])
@@ -2193,18 +2256,31 @@ def compare_audio():
                         file_b.save(tmp_b.name)
                         temp_paths.append(tmp_b.name)
 
-                    y_a = compare_load_audio(temp_paths[0])
-                    y_b = compare_load_audio(temp_paths[1])
+                    y_a, duration_a = compare_load_audio(temp_paths[0])
+                    y_b, duration_b = compare_load_audio(temp_paths[1])
+                    gc.collect()
+
                     if y_a.size == 0 or y_b.size == 0:
                         error = "One of the uploaded files appears empty or unreadable."
                     else:
                         filename_a = file_a.filename
                         filename_b = file_b.filename
-                        metrics = compute_audio_comparison_metrics(y_a, y_b, COMPARE_SR)
+                        analysis_a = _compare_analyze_clip(y_a, duration_a)
+                        del y_a
+                        analysis_b = _compare_analyze_clip(y_b, duration_b)
+                        del y_b
+                        gc.collect()
+
+                        metrics = compute_audio_comparison_metrics(analysis_a, analysis_b)
                         try:
-                            compare_plots = build_compare_plots(y_a, y_b, COMPARE_SR, max_y_freq)
+                            compare_plots = build_compare_plots(analysis_a, analysis_b, max_y_freq)
                         except Exception as plot_exc:
                             error = f"Failed to generate comparison plots: {plot_exc}"
+                        finally:
+                            analysis_a.d_db = np.empty(0, dtype=np.float32)
+                            analysis_b.d_db = np.empty(0, dtype=np.float32)
+                            del analysis_a, analysis_b
+                            gc.collect()
                 except Exception as exc:
                     error = f"Could not process audio: {exc}"
                 finally:
