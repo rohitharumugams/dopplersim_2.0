@@ -1,17 +1,62 @@
-.venv/
-venv/
+# Node
+node_modules/
 
+# Python
 __pycache__/
 *.py[cod]
-
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
 .cache/
 .matplotlib_cache/
 
+# Flask
+instance/
+.webassets-cache
+
+# Generated files
 renders/
 static/
 uploads/
+benchmarks/test_output/
 
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local Notes and Tests
+ref_docs/
+*.pdf
+*test*.py
+
+# LaTeX paper (local draft)
+latex/
 DopplerSim_presentation.tex
 DopplerSim_comparison_presentation.tex
+
+# Assets (local)
 images/
 audio/
+
+# Environment variables
+.env
+
+# Markdown: track README files only (plan notes, audits, local docs stay untracked)
+*.md
+!README.md
+!**/README.md

@@ -29,11 +29,28 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import numpy as np
 import pywt
 import soundfile as sf
 from flask import Flask, render_template, request, send_file, send_from_directory, session, url_for
 from scipy.interpolate import interp1d
+
+from tf_analysis import (
+    ReassignedAtoms,
+    StftParams,
+    atoms_summary,
+    atoms_to_npz_bytes,
+    compute_reassigned_atoms,
+    plot_reassigned_passby,
+    plot_reassigned_specg_b64,
+    plot_stft_reassigned_comparison_b64,
+)
+from tf_experimental import (
+    EXPERIMENTAL_MAX_DURATION_S,
+    EXPERIMENTAL_SR,
+    build_experimental_comparison,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -41,8 +58,9 @@ PLOTS_DIR = BASE_DIR / "static" / "plots"
 GENERATED_DIR = BASE_DIR / "static" / "generated"
 COMPARE_DIR = BASE_DIR / "static" / "compare"
 RENDERS_DIR = BASE_DIR / "renders"
+ATOMS_DIR = BASE_DIR / "static" / "atoms"
 
-for directory in (UPLOAD_DIR, PLOTS_DIR, GENERATED_DIR, COMPARE_DIR, RENDERS_DIR):
+for directory in (UPLOAD_DIR, PLOTS_DIR, GENERATED_DIR, COMPARE_DIR, RENDERS_DIR, ATOMS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_SR = 44100
@@ -662,6 +680,8 @@ PLOT_EXPORT_NAMES = {
     "propagation_distance": "12_propagation_distance.png",
     "generated_waveform": "13_generated_waveform.png",
     "generated_spectrogram": "14_generated_spectrogram.png",
+    "uploaded_reassigned": "15_uploaded_reassigned.png",
+    "generated_reassigned": "16_generated_reassigned.png",
 }
 
 
@@ -678,6 +698,7 @@ def generate_all_plots(
     quantities: dict[str, np.ndarray],
     plot_dir: Path,
     freq_max: float = DEFAULT_FREQ_MAX,
+    include_reassigned: bool = False,
 ) -> dict[str, str]:
     t_obs = np.arange(len(generated_audio), dtype=float) / OUTPUT_SR
     plots = {
@@ -792,6 +813,29 @@ def generate_all_plots(
             freq_max=freq_max,
         ),
     }
+    if include_reassigned:
+        plots["uploaded_reassigned"] = plot_reassigned_passby(
+            uploaded_audio,
+            uploaded_sr,
+            "Uploaded Reassigned Spectrogram",
+            PLOT_EXPORT_NAMES["uploaded_reassigned"],
+            plot_dir,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            freq_max=freq_max,
+            t_cpa=params.t_cpa1,
+        )
+        plots["generated_reassigned"] = plot_reassigned_passby(
+            generated_audio,
+            OUTPUT_SR,
+            "Generated Reassigned Spectrogram",
+            PLOT_EXPORT_NAMES["generated_reassigned"],
+            plot_dir,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            freq_max=freq_max,
+            t_cpa=params.t_cpa2,
+        )
     return plots
 
 
@@ -805,6 +849,21 @@ def parse_freq_max(default: float | None = None) -> float:
     fallback = DEFAULT_FREQ_MAX if default is None else default
     value = parse_float("freq_max", fallback)
     return float(np.clip(value, 500.0, MAX_FREQ_LIMIT))
+
+
+def parse_include_reassigned() -> bool:
+    return request.form.get("include_reassigned") in ("on", "true", "1", "yes")
+
+
+def parse_optional_t_cpa() -> float | None:
+    raw = request.form.get("t_cpa", "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) else None
 
 
 def save_render_state(
@@ -825,6 +884,7 @@ def save_render_state(
     stft: np.ndarray,
     stft_times: np.ndarray,
     quantities: dict[str, np.ndarray],
+    include_reassigned: bool = False,
 ) -> None:
     render_dir = RENDERS_DIR / render_id
     render_dir.mkdir(parents=True, exist_ok=True)
@@ -852,6 +912,7 @@ def save_render_state(
         "freq_max": freq_max,
         "params": asdict(params),
         "plots": plots,
+        "include_reassigned": include_reassigned,
     }
     (render_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     session["last_render_id"] = render_id
@@ -895,6 +956,7 @@ def build_success_context(
         "render_id": render_id,
         "audio_url": url_for("generated_file", filename=output_name),
         "freq_max": freq_max,
+        "include_reassigned": bool(meta.get("include_reassigned", False)),
         "plots": plot_urls_for_render(render_id, plots, freq_max),
         **form_context(
             params,
@@ -909,6 +971,7 @@ def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, 
     meta, arrays = load_render_state(render_id)
     params = RenderParams(**meta["params"])
     plot_dir = PLOTS_DIR / render_id
+    include_reassigned = bool(meta.get("include_reassigned", False))
 
     plots = generate_all_plots(
         arrays["uploaded_audio"],
@@ -923,6 +986,7 @@ def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, 
         arrays["quantities"],
         plot_dir,
         freq_max=freq_max,
+        include_reassigned=include_reassigned,
     )
 
     meta["freq_max"] = freq_max
@@ -1043,6 +1107,7 @@ def index():
 def generate():
     params, speed_unit = parse_params()
     freq_max = parse_freq_max()
+    include_reassigned = parse_include_reassigned()
     upload_path, upload_filename, upload_error = resolve_upload_path()
     if upload_error:
         return render_template(
@@ -1105,6 +1170,7 @@ def generate():
             quantities,
             plot_dir,
             freq_max=freq_max,
+            include_reassigned=include_reassigned,
         )
 
         save_render_state(
@@ -1124,6 +1190,7 @@ def generate():
             stft=stft,
             stft_times=stft_times,
             quantities=quantities,
+            include_reassigned=include_reassigned,
         )
     except Exception as exc:
         return render_template(
@@ -1135,6 +1202,7 @@ def generate():
     meta = {
         "output_name": output_name,
         "freq_max": freq_max,
+        "include_reassigned": include_reassigned,
     }
     return render_template(
         "index.html",
@@ -1583,7 +1651,40 @@ def spec_mel(y: np.ndarray, sr: int, fmax_hz: float, p: SpecgStftParams) -> Dict
         n_mels=n_mels,
         fmax=fmax_hz,
     )
-    img = specg_plot_spec(S, sr, p.hop_length, title, fmax_hz, y_axis="mel", is_power=True)
+    fig, ax = plt.subplots(figsize=(4.2, 3.0), facecolor="#0f1117")
+    ax.set_facecolor("#0f1117")
+    vmax = float(np.max(S))
+    if vmax <= 0.0 or not np.isfinite(vmax):
+        S_db = librosa.power_to_db(np.maximum(S, 1e-10), ref=1.0)
+        img_mesh = librosa.display.specshow(
+            S_db,
+            sr=sr,
+            hop_length=p.hop_length,
+            x_axis="time",
+            y_axis="mel",
+            fmax=fmax_hz,
+            ax=ax,
+            cmap="magma",
+        )
+    else:
+        positive = S[S > 0]
+        vmin = max(float(np.percentile(positive, 5)) if positive.size else vmax * 1e-4, vmax * 1e-5)
+        img_mesh = librosa.display.specshow(
+            S,
+            sr=sr,
+            hop_length=p.hop_length,
+            x_axis="time",
+            y_axis="mel",
+            fmax=fmax_hz,
+            ax=ax,
+            cmap="magma",
+            norm=LogNorm(vmin=vmin, vmax=vmax),
+        )
+    ax.set_title(title, color="white", fontsize=10, pad=6)
+    ax.tick_params(colors="#aab0c0", labelsize=7)
+    fig.colorbar(img_mesh, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    img = specg_fig_to_b64(fig)
     return specg_panel(
         title,
         img,
@@ -1596,7 +1697,7 @@ def spec_mel(y: np.ndarray, sr: int, fmax_hz: float, p: SpecgStftParams) -> Dict
             ("Window", specg_window_label(p.window)),
             ("n_mels", str(n_mels)),
             ("Y-axis", "Mel bands"),
-            ("Scale", "Power"),
+            ("Scale", "Power (log color mapping)"),
         ],
     )
 
@@ -1739,39 +1840,73 @@ def spec_wavelet(y: np.ndarray, sr: int, fmax_hz: float) -> Dict[str, Any]:
 
 def spec_reassigned(y: np.ndarray, sr: int, fmax_hz: float, p: SpecgStftParams) -> Dict[str, Any]:
     title = "Reassigned Spectrogram"
-    freqs, times, mags = librosa.reassigned_spectrogram(
+    atoms = compute_reassigned_atoms(
         y,
-        sr=sr,
+        sr,
         n_fft=p.n_fft,
         hop_length=p.hop_length,
         window=p.window,
-        fill_nan=True,
     )
-    fig, ax = plt.subplots(figsize=(4.2, 3.0), facecolor="#0f1117")
-    ax.set_facecolor("#0f1117")
-    mags_db = librosa.power_to_db(mags, ref=np.max)
-    img_mesh = ax.pcolormesh(times, freqs, mags_db, shading="auto", cmap="magma")
-    ax.set_xlabel("Time (s)", color="#aab0c0", fontsize=7)
-    ax.set_ylabel("Hz", color="#aab0c0", fontsize=7)
-    specg_style_hz_ax(ax, title, fmax_hz)
-    fig.colorbar(img_mesh, ax=ax, fraction=0.046, pad=0.04)
-    fig.tight_layout()
-    img = specg_fig_to_b64(fig)
+    img = plot_reassigned_specg_b64(atoms, fmax_hz=fmax_hz, title=title)
     return specg_panel(
         title,
         img,
         sr,
         fmax_hz,
         [
-            ("Transform", "Reassigned STFT"),
+            ("Transform", "Reassigned STFT (Auger–Flandrin)"),
             ("n_fft", str(p.n_fft)),
             ("hop_length", str(p.hop_length)),
             ("Window", specg_window_label(p.window)),
             ("fill_nan", "true"),
+            ("Benefit", "Sub-bin frequency resolution"),
             ("Y-axis", "Frequency (Hz)"),
             ("Scale", "Power → dB"),
         ],
     )
+
+
+def specg_save_atoms(atoms: ReassignedAtoms) -> str:
+    atoms_id = uuid.uuid4().hex
+    path = ATOMS_DIR / f"{atoms_id}.npz"
+    path.write_bytes(atoms_to_npz_bytes(atoms))
+    session["last_atoms_id"] = atoms_id
+    return atoms_id
+
+
+def specg_build_reassignment_extras(
+    y: np.ndarray,
+    sr: int,
+    fmax_hz: float,
+    analysis: SpecgAnalysisParams,
+    t_cpa: float | None,
+) -> tuple[dict[str, str], dict[str, Any], str | None]:
+    stft_params = StftParams(
+        n_fft=analysis.stft.n_fft,
+        hop_length=analysis.stft.hop_length,
+        window=analysis.stft.window,
+    )
+    stft_img, reassigned_img, _ = plot_stft_reassigned_comparison_b64(
+        y,
+        sr,
+        stft_params,
+        fmax_hz=fmax_hz,
+        t_cpa=t_cpa,
+    )
+    atoms = compute_reassigned_atoms(
+        y,
+        sr,
+        n_fft=analysis.stft.n_fft,
+        hop_length=analysis.stft.hop_length,
+        window=analysis.stft.window,
+    )
+    summary = atoms_summary(atoms, fmax_hz=fmax_hz)
+    atoms_id = specg_save_atoms(atoms)
+    comparison = {
+        "stft_compare": stft_img,
+        "reassigned_compare": reassigned_img,
+    }
+    return comparison, summary, atoms_id
 
 
 def spec_synchrosqueezed(y: np.ndarray, sr: int, fmax_hz: float) -> Dict[str, Any]:
@@ -1924,9 +2059,13 @@ def build_all_spectrograms(
 @app.route("/spectrograms", methods=["GET", "POST"])
 def spectrograms():
     panels: List[Dict[str, str]] | None = None
+    comparison: dict[str, str] | None = None
+    atom_summary: dict[str, Any] | None = None
+    atoms_download_url: str | None = None
     error: str | None = None
     filename: str | None = None
     duration_s: float | None = None
+    t_cpa: float | None = None
     fmax_hz = SPECG_DEFAULT_FMAX_HZ
     nyquist_hz = SPECG_SR / 2.0
     analysis = SPECG_DEFAULT_ANALYSIS
@@ -1934,6 +2073,7 @@ def spectrograms():
     if request.method == "POST":
         analysis = specg_parse_analysis_params(request.form)
         fmax_hz = specg_parse_fmax_from_form(request.form, SPECG_SR)
+        t_cpa = parse_optional_t_cpa()
         f = request.files.get("audio")
         if f is None or not f.filename:
             error = "Please choose a WAV or MP3 file."
@@ -1952,6 +2092,15 @@ def spectrograms():
                     duration_s = float(len(y) / sr)
                     fmax_hz = specg_parse_fmax_from_form(request.form, sr)
                     panels = build_all_spectrograms(y, sr, fmax_hz, analysis)
+                    comparison, atom_summary, atoms_id = specg_build_reassignment_extras(
+                        y,
+                        sr,
+                        fmax_hz,
+                        analysis,
+                        t_cpa,
+                    )
+                    if atoms_id:
+                        atoms_download_url = url_for("download_atoms", atoms_id=atoms_id)
                 except Exception as exc:
                     error = f"Could not process audio: {exc}"
                 finally:
@@ -1964,14 +2113,114 @@ def spectrograms():
         "index.html",
         active_tab="spectrograms",
         panels=panels,
+        comparison=comparison,
+        atom_summary=atom_summary,
+        atoms_download_url=atoms_download_url,
+        t_cpa_value=t_cpa if t_cpa is not None else "",
         error=error,
         filename=filename,
         duration_s=duration_s,
         fmax_hz=int(fmax_hz) if fmax_hz == int(fmax_hz) else fmax_hz,
         default_fmax_hz=int(SPECG_DEFAULT_FMAX_HZ),
         nyquist_hz=int(nyquist_hz),
-        fmax_presets=[500, 1000, 2000, 4000, 6000, 8000, 11025],
+        fmax_presets=[500, 1000, 2000, 2500, 4000, 6000, 8000, 11025],
         **specg_analysis_template_context(analysis),
+    )
+
+
+@app.route("/spectrograms/download-atoms/<atoms_id>")
+def download_atoms(atoms_id: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", atoms_id):
+        return "Invalid atoms id.", 400
+    path = ATOMS_DIR / f"{atoms_id}.npz"
+    if not path.exists():
+        return "Atoms file not found or expired.", 404
+    return send_file(
+        path,
+        mimetype="application/octet-stream",
+        as_attachment=True,
+        download_name=f"reassigned_atoms_{atoms_id[:8]}.npz",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Experimental TF (Wigner–Ville comparison — separate tab)
+# ---------------------------------------------------------------------------
+
+EXPERIMENTAL_DEFAULT_FMAX = 2500.0
+EXPERIMENTAL_STFT = StftParams(2048, 512, "hann")
+
+
+@app.route("/experimental-tf", methods=["GET", "POST"])
+def experimental_tf():
+    panels: dict[str, str] | None = None
+    panel_labels: list[tuple[str, str]] | None = None
+    error: str | None = None
+    filename: str | None = None
+    duration_s: float | None = None
+    t_cpa: float | None = None
+    fmax_hz = EXPERIMENTAL_DEFAULT_FMAX
+
+    if request.method == "POST":
+        t_cpa = parse_optional_t_cpa()
+        fmax_hz = specg_parse_fmax_from_form(request.form, EXPERIMENTAL_SR)
+        f = request.files.get("audio")
+        if f is None or not f.filename:
+            error = "Please choose an audio file."
+        else:
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in SPECG_ALLOWED_EXT:
+                error = f"Unsupported format {ext}. Use WAV, MP3, FLAC, OGG, or M4A."
+            else:
+                suffix = ext or ".wav"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    f.save(tmp.name)
+                    tmp_path = tmp.name
+                try:
+                    y, sr = librosa.load(
+                        tmp_path,
+                        sr=EXPERIMENTAL_SR,
+                        mono=True,
+                        duration=EXPERIMENTAL_MAX_DURATION_S,
+                    )
+                    duration_s = float(len(y) / sr)
+                    if duration_s <= 0:
+                        raise ValueError("Audio file is empty.")
+                    filename = f.filename
+                    result = build_experimental_comparison(
+                        y,
+                        sr,
+                        fmax_hz=fmax_hz,
+                        stft_params=EXPERIMENTAL_STFT,
+                        t_cpa=t_cpa,
+                    )
+                    panels = {
+                        "stft": result.stft_image,
+                        "reassigned": result.reassigned_image,
+                        "wvd": result.wvd_image,
+                    }
+                    panel_labels = result.labels
+                    if result.error:
+                        error = result.error
+                except Exception as exc:
+                    error = f"Could not process audio: {exc}"
+                finally:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+
+    return render_template(
+        "index.html",
+        active_tab="experimental",
+        experimental_panels=panels,
+        experimental_labels=panel_labels,
+        experimental_error=error,
+        experimental_filename=filename,
+        experimental_duration_s=duration_s,
+        experimental_fmax_hz=int(fmax_hz) if fmax_hz == int(fmax_hz) else fmax_hz,
+        experimental_t_cpa=t_cpa if t_cpa is not None else "",
+        experimental_max_duration_s=int(EXPERIMENTAL_MAX_DURATION_S),
     )
 
 

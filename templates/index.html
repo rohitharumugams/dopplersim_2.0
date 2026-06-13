@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
+  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -266,10 +266,79 @@
     }
     body.specg-page .metric-card dt { margin: 0; font-size: 0.72rem; color: var(--muted); font-weight: 600; }
     body.specg-page .metric-card dd { margin: 0.2rem 0 0; font-size: 1.1rem; color: var(--text); font-weight: 700; }
+    body.specg-page .experimental-banner {
+      background: #2a2010;
+      border: 1px solid #8b6914;
+      color: #fcd34d;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    body.specg-page .comparison-row {
+      margin-top: 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      body.specg-page .comparison-row { grid-template-columns: 1fr; }
+    }
+    body.specg-page .comparison-row h2 {
+      grid-column: 1 / -1;
+      font-size: 1rem;
+      margin: 0 0 0.25rem;
+      color: var(--text);
+    }
+    body.specg-page .comparison-row .subnote {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin: 0 0 0.5rem;
+    }
+    body.specg-page .atom-summary {
+      margin-top: 1rem;
+      padding: 0.85rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    body.specg-page .atom-summary strong { color: var(--text); }
+    body.specg-page .atom-download {
+      display: inline-block;
+      margin-top: 0.5rem;
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    body.specg-page .atom-download:hover { text-decoration: underline; }
+    body.specg-page .preset-btn {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    body.specg-page .preset-btn:hover { background: rgba(108, 158, 255, 0.12); }
+    body.specg-page .app-tab.experimental-tab { color: #d4a574; }
+    body.specg-page .app-tab.experimental-tab.app-tab-active {
+      border-bottom-color: #d4a574;
+      color: #fcd34d;
+    }
+    body:not(.specg-page) .app-tab.experimental-tab.app-tab-active {
+      border-bottom-color: #d97706;
+      color: #fcd34d;
+    }
   </style>
   {% if active_tab|default('doppler') == 'doppler' %}<script src="https://cdn.tailwindcss.com"></script>{% endif %}
 </head>
-<body class="{% if active_tab in ['spectrograms', 'compare'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
+<body class="{% if active_tab in ['spectrograms', 'compare', 'experimental'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
   <nav class="app-tabs">
     <div class="app-tabs-inner">
       <a
@@ -284,6 +353,10 @@
         href="{{ url_for('compare_audio') }}"
         class="app-tab {% if active_tab == 'compare' %}app-tab-active{% endif %}"
       >Audio Comparison</a>
+      <a
+        href="{{ url_for('experimental_tf') }}"
+        class="app-tab experimental-tab {% if active_tab == 'experimental' %}app-tab-active{% endif %}"
+      >Experimental TF ⚗</a>
     </div>
   </nav>
 
@@ -419,6 +492,20 @@
           <span>1 kHz</span>
           <span>22.05 kHz</span>
         </div>
+        <label class="mt-4 flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            name="include_reassigned"
+            class="mt-1 rounded border-slate-600 bg-slate-950 text-blue-600"
+            {% if include_reassigned %}checked{% endif %}
+          >
+          <span class="text-sm text-slate-300">
+            Include reassigned spectrograms
+            <span class="block text-xs text-slate-500 mt-0.5">
+              Adds two diagnostic plots (uploaded + generated) with sub-bin TF resolution. Slower; does not change audio.
+            </span>
+          </span>
+        </label>
       </section>
 
       <button
@@ -538,6 +625,16 @@
             <figcaption class="text-sm text-slate-400 mb-2">Generated spectrogram</figcaption>
             <img src="{{ plots.generated_spectrogram }}" alt="Generated spectrogram" class="w-full rounded">
           </figure>
+          {% if plots.uploaded_reassigned %}
+          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-amber-200/80 mb-2">Uploaded reassigned spectrogram (diagnostic)</figcaption>
+            <img src="{{ plots.uploaded_reassigned }}" alt="Uploaded reassigned spectrogram" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-amber-200/80 mb-2">Generated reassigned spectrogram (diagnostic)</figcaption>
+            <img src="{{ plots.generated_reassigned }}" alt="Generated reassigned spectrogram" class="w-full rounded">
+          </figure>
+          {% endif %}
         </div>
       </div>
     </section>
@@ -548,11 +645,11 @@
 
   <header>
     <h1>Spectrogram Explorer</h1>
-    <p class="sub">Upload WAV or MP3 — ten time–frequency views in a 2×5 grid</p>
+    <p class="sub">Upload WAV or MP3 — ten time–frequency views plus reassignment comparison and atom export</p>
   </header>
 
   <main>
-    <form class="upload" method="post" enctype="multipart/form-data" action="{{ url_for('spectrograms') }}">
+    <form class="upload" id="specg-form" method="post" enctype="multipart/form-data" action="{{ url_for('spectrograms') }}">
       <input type="file" name="audio" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" required />
       <label class="fmax" for="fmax_hz">
         Max frequency
@@ -630,6 +727,21 @@
         </select>
       </label>
 
+      <label class="fmax" for="t_cpa">
+        t_CPA (s, optional)
+        <input
+          type="number"
+          id="t_cpa"
+          name="t_cpa"
+          step="any"
+          min="0"
+          placeholder="e.g. 2.5"
+          value="{{ t_cpa_value }}"
+        />
+      </label>
+
+      <button type="button" class="preset-btn" id="passby-preset-btn" title="fmax 2500 Hz, hop 512, n_fft 2048">Apply pass-by preset</button>
+
       <button type="submit">Generate spectrograms</button>
       {% if filename %}
       <span class="meta">File: {{ filename }}{% if duration_s %} · {{ "%.1f"|format(duration_s) }} s analyzed{% endif %}{% if panels %} · max {{ fmax_hz }} Hz{% endif %} (max {{ 90 }} s)</span>
@@ -638,6 +750,33 @@
 
     {% if error %}
     <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if comparison %}
+    <section class="comparison-row" aria-label="STFT vs reassigned comparison">
+      <h2>STFT vs Reassigned (shared scale)</h2>
+      <p class="subnote">Reassignment improves sub-bin frequency resolution along Doppler ridges — not a sparse point cloud.</p>
+      <article class="cell">
+        <h2>STFT</h2>
+        <img src="data:image/png;base64,{{ comparison.stft_compare }}" alt="STFT comparison" loading="lazy" />
+      </article>
+      <article class="cell">
+        <h2>Reassigned STFT</h2>
+        <img src="data:image/png;base64,{{ comparison.reassigned_compare }}" alt="Reassigned comparison" loading="lazy" />
+      </article>
+    </section>
+    {% if atom_summary %}
+    <div class="atom-summary">
+      <strong>Reassigned atoms:</strong>
+      {{ atom_summary.above_threshold }} / {{ atom_summary.total_bins }} bins above {{ atom_summary.threshold_db }} dB rel. peak
+      {% if atom_summary.freq_max_hz > 0 %}
+      · relocated frequency span {{ "%.0f"|format(atom_summary.freq_min_hz) }}–{{ "%.0f"|format(atom_summary.freq_max_hz) }} Hz
+      {% endif %}
+      {% if atoms_download_url %}
+      <br><a class="atom-download" href="{{ atoms_download_url }}">Download reassigned atoms (.npz)</a>
+      {% endif %}
+    </div>
+    {% endif %}
     {% endif %}
 
     {% if panels %}
@@ -667,7 +806,89 @@
       const custom = document.getElementById("fmax_hz_custom");
       if (custom) custom.value = "";
     });
+    document.getElementById("passby-preset-btn")?.addEventListener("click", function () {
+      const fmax = document.getElementById("fmax_hz");
+      const custom = document.getElementById("fmax_hz_custom");
+      const hop = document.getElementById("stft_hop");
+      const nfft = document.getElementById("stft_n_fft");
+      if (fmax) {
+        const opt = Array.from(fmax.options).find((o) => o.value === "2500");
+        if (opt) fmax.value = "2500";
+      }
+      if (custom) custom.value = "";
+      if (hop) hop.value = "512";
+      if (nfft) nfft.value = "2048";
+    });
   </script>
+
+  {% elif active_tab == 'experimental' %}
+
+  <header>
+    <h1>Experimental TF ⚗</h1>
+    <p class="sub">Research preview — STFT, reassigned STFT, and Wigner–Ville comparison (max {{ experimental_max_duration_s }} s)</p>
+  </header>
+
+  <main>
+    <div class="experimental-banner">
+      <strong>Experimental mode.</strong> Wigner–Ville can show sharp ridges but also <strong>cross-term interference</strong> on multi-harmonic vehicle audio.
+      Use reassigned STFT for production visualization; WVD is for side-by-side study only. Not exported to Pass-By ZIP.
+    </div>
+
+    <form class="upload" method="post" enctype="multipart/form-data" action="{{ url_for('experimental_tf') }}">
+      <input type="file" name="audio" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*" required />
+      <label class="fmax" for="exp_fmax_hz">
+        Max frequency
+        <select id="exp_fmax_hz" name="fmax_hz">
+          {% for preset in [500, 1000, 2000, 2500, 4000, 6000, 8000] %}
+          <option value="{{ preset }}" {% if preset == experimental_fmax_hz|int %}selected{% endif %}>{{ preset }} Hz</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="fmax" for="exp_t_cpa">
+        t_CPA (s, optional)
+        <input type="number" id="exp_t_cpa" name="t_cpa" step="any" min="0" placeholder="e.g. 2.5" value="{{ experimental_t_cpa }}" />
+      </label>
+      <button type="submit">Run experimental comparison</button>
+      {% if experimental_filename %}
+      <span class="meta">File: {{ experimental_filename }}{% if experimental_duration_s %} · {{ "%.1f"|format(experimental_duration_s) }} s{% endif %}</span>
+      {% endif %}
+    </form>
+
+    {% if experimental_error and not experimental_panels %}
+    <div class="error">{{ experimental_error }}</div>
+    {% endif %}
+
+    {% if experimental_panels %}
+    <section class="comparison-row" style="grid-template-columns: repeat(3, 1fr);" aria-label="Experimental TF comparison">
+      <h2>STFT · Reassigned · Wigner–Ville</h2>
+      <p class="subnote">WVD computed on a ≤6 s centered segment at 11025 Hz. Independent dB scale on WVD panel.</p>
+      <article class="cell">
+        <h2>STFT</h2>
+        <img src="data:image/png;base64,{{ experimental_panels.stft }}" alt="STFT" loading="lazy" />
+      </article>
+      <article class="cell">
+        <h2>Reassigned</h2>
+        <img src="data:image/png;base64,{{ experimental_panels.reassigned }}" alt="Reassigned" loading="lazy" />
+      </article>
+      <article class="cell">
+        <h2>Wigner–Ville</h2>
+        <img src="data:image/png;base64,{{ experimental_panels.wvd }}" alt="Wigner-Ville" loading="lazy" />
+      </article>
+    </section>
+    {% if experimental_labels %}
+    <dl class="metric-grid">
+      {% for key, value in experimental_labels %}
+      <div class="metric-card">
+        <dt>{{ key }}</dt>
+        <dd style="font-size:0.85rem;font-weight:600;">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% else %}
+    <p class="placeholder">Upload a clip (≤ {{ experimental_max_duration_s }} s) and click <strong>Run experimental comparison</strong>.</p>
+    {% endif %}
+  </main>
 
   {% elif active_tab == 'compare' %}
 
