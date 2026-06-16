@@ -860,7 +860,7 @@ SPECG_TYPE_REGISTRY: Tuple[SpecgTypeDef, ...] = (
     SpecgTypeDef(
         "log_mel",
         "Log-Mel Spectrogram",
-        False,
+        True,
         lambda y, sr, fmax_hz, analysis: spec_log_mel(y, sr, fmax_hz, analysis.stft),
         _tensor_log_mel,
     ),
