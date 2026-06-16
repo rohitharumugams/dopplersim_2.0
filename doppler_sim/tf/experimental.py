@@ -13,7 +13,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import hilbert
 
-from tf_analysis import ReassignedAtoms, StftParams, compute_reassigned_atoms, plot_reassigned_specg_b64, plot_stft_specg_b64
+from doppler_sim.tf.analysis import (
+    StftParams,
+    compute_reassigned_atoms,
+    plot_reassigned_specg_b64,
+    plot_stft_specg_b64,
+)
 
 __all__ = [
     "ExperimentalComparison",

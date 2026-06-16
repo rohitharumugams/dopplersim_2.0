@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
+  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% elif active_tab == 'batch' %}Batch Generation{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -335,12 +335,338 @@
       border-bottom-color: #d97706;
       color: #fcd34d;
     }
+    body.specg-page .batch-page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 0 2rem;
+    }
+    body.specg-page .batch-page header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid #21262d;
+    }
+    body.specg-page .batch-page header h1 {
+      color: #58a6ff;
+      font-size: 1.75rem;
+      margin-bottom: 0.35rem;
+    }
+    body.specg-page .batch-page header .sub {
+      color: #8b949e;
+      font-size: 0.92rem;
+    }
+    body.specg-page .batch-section {
+      background: #161b22;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+    }
+    body.specg-page .batch-section-title {
+      color: #58a6ff;
+      font-size: 1.05rem;
+      margin: 0 0 1rem;
+      font-weight: 600;
+    }
+    body.specg-page .batch-hint {
+      color: #8b949e;
+      font-size: 0.82rem;
+      margin: 0 0 0.75rem;
+      line-height: 1.45;
+    }
+    body.specg-page .batch-param-group {
+      margin-bottom: 1rem;
+    }
+    body.specg-page .batch-param-group:last-child {
+      margin-bottom: 0;
+    }
+    body.specg-page .batch-param-label {
+      display: block;
+      margin-bottom: 0.4rem;
+      color: #8b949e;
+      font-size: 0.85rem;
+    }
+    body.specg-page .batch-page input[type="number"],
+    body.specg-page .batch-page input[type="text"],
+    body.specg-page .batch-page select {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #e6edf3;
+      font-size: 0.9rem;
+    }
+    body.specg-page .batch-page input:focus,
+    body.specg-page .batch-page select:focus {
+      outline: none;
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.3);
+    }
+    body.specg-page .batch-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+    body.specg-page .batch-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+    }
+    @media (max-width: 1000px) {
+      body.specg-page .batch-grid-4 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 700px) {
+      body.specg-page .batch-grid-2,
+      body.specg-page .batch-grid-4 { grid-template-columns: 1fr; }
+    }
+    body.specg-page .batch-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.35rem;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      color: #c9d1d9;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    body.specg-page .batch-check:hover {
+      background: #0d1117;
+      border-color: #30363d;
+    }
+    body.specg-page .batch-check input {
+      margin-top: 0.2rem;
+      transform: scale(1.05);
+    }
+    body.specg-page .batch-check-body {
+      flex: 1;
+      min-width: 0;
+    }
+    body.specg-page .batch-check-title {
+      font-weight: 500;
+      color: #e6edf3;
+    }
+    body.specg-page .batch-check-meta {
+      font-size: 0.78rem;
+      color: #8b949e;
+      margin-top: 0.15rem;
+    }
+    body.specg-page .batch-check-extra {
+      margin-top: 0.55rem;
+      display: none;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+    body.specg-page .batch-check.is-on .batch-check-extra {
+      display: flex;
+    }
+    body.specg-page .batch-check-extra label {
+      font-size: 0.8rem;
+      color: #8b949e;
+      min-width: 140px;
+    }
+    body.specg-page .batch-length-badge {
+      display: inline-block;
+      margin-top: 0.35rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      font-size: 0.75rem;
+      color: #7ee787;
+    }
+    body.specg-page .batch-length-missing {
+      color: #f0883e;
+      font-size: 0.75rem;
+      margin-top: 0.35rem;
+    }
+    body.specg-page .batch-spec-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.35rem 1rem;
+    }
+    body.specg-page .batch-spec-check {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.88rem;
+      color: #c9d1d9;
+    }
+    body.specg-page .batch-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    body.specg-page .batch-warning {
+      color: #f0883e;
+      font-size: 0.82rem;
+    }
+    body.specg-page .batch-btn {
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 0.65rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    body.specg-page .batch-btn:hover {
+      background: #2ea043;
+    }
+    body.specg-page .batch-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    body.specg-page .batch-btn-secondary {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+    }
+    body.specg-page .batch-btn-secondary:hover {
+      background: #30363d;
+    }
+    body.specg-page .batch-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+      margin: 1.5rem 0 1rem;
+    }
+    body.specg-page .batch-path {
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      color: #8b949e;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 0.45rem 0.65rem;
+      word-break: break-all;
+    }
+    body.specg-page .batch-path-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    body.specg-page .batch-path-field {
+      flex: 1;
+      min-width: 12rem;
+    }
+    body.specg-page .batch-page input.batch-path {
+      width: 100%;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      color: #8b949e;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 0.45rem 0.65rem;
+      word-break: break-all;
+    }
+    body.specg-page .batch-page input.batch-path[readonly] {
+      cursor: default;
+      opacity: 1;
+    }
+    body.specg-page .batch-page input.batch-path:not([readonly]) {
+      color: #e6edf3;
+    }
+    body.specg-page .batch-page input.batch-path:not([readonly]):focus {
+      outline: none;
+      border-color: #58a6ff;
+      box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.3);
+    }
+    body.specg-page .batch-path-change-btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    body.specg-page .batch-progress {
+      margin-top: 1rem;
+      padding: 1rem 1.25rem;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+    }
+    body.specg-page .batch-progress h2 {
+      color: #58a6ff;
+      font-size: 1rem;
+      margin: 0 0 0.5rem;
+    }
+    body.specg-page .batch-progress-text {
+      margin: 0 0 0.65rem;
+      color: #c9d1d9;
+      font-size: 0.9rem;
+    }
+    body.specg-page .batch-progress-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    body.specg-page .batch-progress-track {
+      flex: 1;
+      height: 1.1rem;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    body.specg-page .batch-progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #3fb950 0%, #2ea043 100%);
+      transition: width 0.45s ease;
+      box-shadow: 0 0 12px rgba(63, 185, 80, 0.35);
+    }
+    body.specg-page .batch-progress-fill.is-complete {
+      background: linear-gradient(90deg, #56d364 0%, #3fb950 100%);
+      box-shadow: 0 0 14px rgba(86, 211, 100, 0.45);
+    }
+    body.specg-page .batch-progress-pct {
+      min-width: 3rem;
+      text-align: right;
+      font-family: ui-monospace, monospace;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #3fb950;
+    }
+    body.specg-page .batch-vehicle-panel {
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+    body.specg-page .batch-inline-prompt {
+      color: #ffb4c0;
+      font-size: 0.88rem;
+      margin: 0.5rem 0 0.75rem;
+      padding: 0.55rem 0.75rem;
+      background: #3a1520;
+      border: 1px solid #8b3048;
+      border-radius: 6px;
+    }
+    body.specg-page .batch-section.is-attention {
+      outline: 2px solid #f85149;
+      outline-offset: 4px;
+      border-radius: 6px;
+    }
+    body.specg-page .batch-param-group.is-attention input {
+      border-color: #f85149;
+      box-shadow: 0 0 0 1px #f8514966;
+    }
   </style>
   {% if active_tab|default('doppler') == 'doppler' %}<script src="https://cdn.tailwindcss.com"></script>{% endif %}
 </head>
-<body class="{% if active_tab in ['spectrograms', 'compare', 'experimental'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
+<body class="{% if active_tab in ['spectrograms', 'compare', 'experimental', 'batch'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
   <nav class="app-tabs">
     <div class="app-tabs-inner">
+      <a
+        href="{{ url_for('batch_generation') }}"
+        class="app-tab {% if active_tab == 'batch' %}app-tab-active{% endif %}"
+      >Batch Generation</a>
       <a
         href="{{ url_for('index') }}"
         class="app-tab {% if active_tab|default('doppler') == 'doppler' %}app-tab-active{% endif %}"
@@ -356,7 +682,7 @@
       <a
         href="{{ url_for('experimental_tf') }}"
         class="app-tab experimental-tab {% if active_tab == 'experimental' %}app-tab-active{% endif %}"
-      >Experimental TF ⚗</a>
+      >Experimental TF</a>
     </div>
   </nav>
 
@@ -824,7 +1150,7 @@
   {% elif active_tab == 'experimental' %}
 
   <header>
-    <h1>Experimental TF ⚗</h1>
+    <h1>Experimental TF</h1>
     <p class="sub">Research preview — STFT, reassigned STFT, and Wigner–Ville comparison (max {{ experimental_max_duration_s }} s)</p>
   </header>
 
@@ -889,6 +1215,645 @@
     <p class="placeholder">Upload a clip (≤ {{ experimental_max_duration_s }} s) and click <strong>Run experimental comparison</strong>.</p>
     {% endif %}
   </main>
+
+  {% elif active_tab == 'batch' %}
+
+  <main class="batch-page">
+    <header>
+      <h1>Batch Generation</h1>
+      <p class="sub">Straight-line pass-by dataset generation using the Pass-By Sim synthesis pipeline.</p>
+    </header>
+
+    {% if batch_error %}
+    <div class="error">{{ batch_error }}</div>
+    {% endif %}
+    {% if batch_message %}
+    <div class="experimental-banner" style="border-color:#16a34a;background:#14532d33;">
+      <strong>{{ batch_message }}</strong>
+    </div>
+    {% endif %}
+
+    {% if batch_vehicles %}
+    <form id="batch-form" method="post" action="{{ url_for('batch_start') }}">
+      <input type="hidden" name="override_batch" id="override_batch" value="0" />
+
+      <div class="batch-section">
+        <h3 class="batch-section-title">Dataset Settings</h3>
+        <div class="batch-grid-2">
+          <div class="batch-param-group" id="batch-name-group">
+            <label class="batch-param-label" for="batch_name">Batch name</label>
+            <input type="text" id="batch_name" name="batch_name" value="{{ batch_name|default('') }}" placeholder="{{ batch_name_default }}" />
+            <p id="batch-name-prompt" class="batch-inline-prompt" role="alert" {% if not batch_name_exists %}hidden{% endif %}>
+              A batch folder with this name already exists. Change the batch name, or start again and choose to overwrite.
+            </p>
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label" for="total_clips">Total clips</label>
+            <input type="number" id="total_clips" name="total_clips" min="1" value="10" required />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label" for="num_emitters">Emitters per vehicle</label>
+            <input type="number" id="num_emitters" name="num_emitters" min="1" value="2" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label" for="t_out_s">Output duration (s)</label>
+            <input type="number" id="t_out_s" name="t_out_s" step="any" value="10" />
+          </div>
+        </div>
+
+        <div class="batch-param-group" style="margin-top: 1rem;">
+          <label class="batch-param-label">Input folder</label>
+          <div class="batch-path-row">
+            <div class="batch-path-field">
+              <input
+                type="text"
+                class="batch-path"
+                id="input_path_display"
+                readonly
+                value="{{ batch_input_dir|default(batch_input_default) }}"
+                title="{{ batch_input_dir|default(batch_input_default) }} (relative to project root)"
+              />
+              <input type="hidden" name="input_dir" id="input_dir" value="{{ batch_input_dir|default(batch_input_default) }}" />
+            </div>
+            <button type="button" class="batch-btn batch-btn-secondary batch-path-change-btn" id="input_path_change_btn">Change path</button>
+          </div>
+        </div>
+
+        <div class="batch-param-group">
+          <label class="batch-param-label">Output folder</label>
+          <div class="batch-path-row">
+            <div class="batch-path-field">
+              <input
+                type="text"
+                class="batch-path"
+                id="output_path_display"
+                readonly
+                value="{{ batch_output_dir|default(batch_output_default) }}{% if batch_name %}/{{ batch_name }}{% else %}/{% endif %}"
+                title="{{ batch_output_dir|default(batch_output_default) }}{% if batch_name %}/{{ batch_name }}{% endif %} (relative to project root)"
+              />
+              <input type="hidden" name="output_dir" id="output_dir" value="{{ batch_output_dir|default(batch_output_default) }}" />
+            </div>
+            <button type="button" class="batch-btn batch-btn-secondary batch-path-change-btn" id="output_path_change_btn">Change path</button>
+          </div>
+          <p class="batch-hint" style="margin-top: 0.35rem;">
+            Relative to project root. Batch name is appended automatically
+            (e.g. <code>static/batch_outputs/my_dataset_001/</code>).
+          </p>
+        </div>
+
+        <p class="batch-hint" style="margin-top: 0.75rem;">
+          Clips: <code>VehicleName_54.wav</code> plus sidecar <code>VehicleName_54.txt</code>
+          with <code>speed_kmh t_cpa1_s</code> (e.g. <code>54.0 5.65</code>).
+        </p>
+      </div>
+
+      <div class="batch-grid-2">
+        <div class="batch-section" id="batch-vehicle-section">
+          <h3 class="batch-section-title">Car Selection</h3>
+          <p class="batch-hint">Select vehicles to include. Each uses its catalog length when available.</p>
+          <p id="batch-vehicle-prompt" class="batch-inline-prompt" role="alert" {% if not batch_vehicle_required %}hidden{% endif %}>
+            Select at least one car to include in the batch.
+          </p>
+          <div class="batch-toolbar">
+            <button type="button" id="batch-select-all" class="batch-btn batch-btn-secondary">Select all cars</button>
+            <span id="batch-speed-warning" class="batch-warning" hidden>
+              One source speed per vehicle is recommended.
+            </span>
+          </div>
+          <div class="batch-vehicle-panel" id="batch-vehicle-panel">
+            {% for v in batch_vehicles %}
+            <label class="batch-check" data-vehicle="{{ v.name }}">
+              <input
+                type="checkbox"
+                name="enabled_{{ v.name }}"
+                class="batch-vehicle-enabled"
+                data-vehicle="{{ v.name }}"
+                data-needs-length="{{ '1' if v.needs_length_input else '0' }}"
+              />
+              <div class="batch-check-body">
+                <div class="batch-check-title">{{ v.display_name }}</div>
+                <div class="batch-check-meta">{{ v.name }} · {{ v.clips|length }} clip{% if v.clips|length != 1 %}s{% endif %}</div>
+                {% if v.length_m is not none %}
+                <span class="batch-length-badge">Length: {{ "%.3f"|format(v.length_m) }} m</span>
+                {% else %}
+                <span class="batch-length-missing">Length not in catalog — enter below when selected</span>
+                {% endif %}
+                <div class="batch-check-extra">
+                  <label>
+                    Source speed
+                    <select name="speed_{{ v.name }}" class="batch-speed-dropdown">
+                      {% for opt in v.speed_options %}
+                      <option value="{{ opt.mps }}" {% if opt.mps == v.median_speed %}selected{% endif %}>
+                        {{ opt.label }}{% if opt.t_cpa1_s is not none %} — t_CPA₁ {{ "%.2f"|format(opt.t_cpa1_s) }} s{% elif not opt.has_sidecar %} (no .txt){% endif %}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  {% if v.needs_length_input %}
+                  <label>
+                    Length (m)
+                    <input type="number" name="length_{{ v.name }}" step="any" min="0.1" placeholder="e.g. 4.5" class="batch-length-input" />
+                  </label>
+                  {% endif %}
+                </div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="batch-section">
+          <h3 class="batch-section-title">Spectrogram Types</h3>
+          <p class="batch-hint">Same transforms as Spectrogram Explorer. Only checked types are exported.</p>
+          <div class="batch-spec-grid">
+            {% for key, label, default_on in batch_spec_types %}
+            <label class="batch-spec-check">
+              <input type="checkbox" name="spec_{{ key }}" {% if default_on %}checked{% endif %} />
+              {{ label }}
+            </label>
+            {% endfor %}
+          </div>
+          <div class="batch-param-group" style="margin-top: 1rem;">
+            <label class="batch-param-label" for="specg_fmax_hz">Max frequency (Hz)</label>
+            <input type="number" id="specg_fmax_hz" name="specg_fmax_hz" min="100" max="11025" step="any" value="1250" />
+          </div>
+        </div>
+      </div>
+
+      <div class="batch-grid-4">
+        <div class="batch-section">
+          <h3 class="batch-section-title">Speed (v₂)</h3>
+          <p class="batch-hint">Random render speed per clip.</p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Minimum (m/s)</label>
+            <input type="number" name="speed_mps_min" step="any" value="10" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Maximum (m/s)</label>
+            <input type="number" name="speed_mps_max" step="any" value="40" />
+          </div>
+        </div>
+
+        <div class="batch-section">
+          <h3 class="batch-section-title">Pass-by distance (generated clip)</h3>
+          <p class="batch-hint">
+            <strong>CPA</strong> = closest point of approach — when the car passes nearest the microphone.
+            <strong>h₂</strong> is the side distance at that moment (meters). Each clip picks a random value in this range.
+            Set min = max for a fixed distance on every clip.
+          </p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Minimum side distance h₂ (m)</label>
+            <input type="number" name="cpa_distance_min" step="any" value="0.5" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Maximum side distance h₂ (m)</label>
+            <input type="number" name="cpa_distance_max" step="any" value="100" />
+          </div>
+        </div>
+
+        <div class="batch-section">
+          <h3 class="batch-section-title">Pass-by time (generated clip)</h3>
+          <p class="batch-hint">
+            <strong>t_CPA₂</strong> is the time (seconds from the start of the output clip) when the car is closest to the mic.
+            Default 5&nbsp;s (fixed). Set min = max to keep one value across all clips.
+          </p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Minimum t_CPA₂ (s)</label>
+            <input type="number" name="t_cpa2_min" step="any" value="5" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Maximum t_CPA₂ (s)</label>
+            <input type="number" name="t_cpa2_max" step="any" value="5" />
+          </div>
+        </div>
+
+        <div class="batch-section">
+          <h3 class="batch-section-title">Source recording geometry</h3>
+          <p class="batch-hint">
+            Fixed assumptions about your <em>input</em> WAV used to remove Doppler from the real pass-by (v₁ inversion).
+            <strong>h₁</strong> defaults to 0.5&nbsp;m. <strong>t_CPA₁</strong> is read per clip from the matching
+            <code>.txt</code> sidecar (not set here).
+          </p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">h₁ — side distance in source recording (m)</label>
+            <input type="number" name="h1_m" step="any" value="0.5" />
+          </div>
+        </div>
+      </div>
+
+      <div class="batch-actions">
+        <button type="submit" class="batch-btn" {% if batch_running %}disabled{% endif %}>Start batch</button>
+        <button type="submit" formaction="{{ url_for('batch_resume') }}" class="batch-btn batch-btn-secondary" {% if batch_running %}disabled{% endif %}>Resume batch</button>
+        <button type="submit" formaction="{{ url_for('batch_cancel') }}" formmethod="post" class="batch-btn batch-btn-secondary">Cancel</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="batch-section">
+      <p class="batch-hint">No source clips found. Add WAV files to:</p>
+      <div class="batch-path">{{ batch_input_dir|default(batch_input_default) }}</div>
+      <p class="batch-hint" style="margin-top: 0.5rem;">Example: <code>CitroenC4Picasso_59.wav</code></p>
+    </div>
+    {% endif %}
+
+    <section id="batch-progress-panel" class="batch-progress" {% if not batch_progress or batch_progress.get('status') in (none, '', 'idle') %}hidden{% endif %}>
+      <h2>Progress</h2>
+      {% set batch_done = batch_progress.get('completed', 0) if batch_progress else 0 %}
+      {% set batch_total = batch_progress.get('total', 1) if batch_progress else 1 %}
+      {% set batch_pct = ((batch_done / batch_total) * 100)|round|int if batch_total else 0 %}
+      <p id="batch-progress-text" class="batch-progress-text">
+        {% if batch_progress %}
+        Status: {{ batch_progress.get('status', 'unknown') }} — {{ batch_done }} / {{ batch_total }} ({{ batch_pct }}%)
+        {% endif %}
+      </p>
+      <div class="batch-progress-row">
+        <div class="batch-progress-track" role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="{{ batch_total }}"
+          aria-valuenow="{{ batch_done }}"
+          id="batch-progress-track">
+          <div
+            id="batch-progress-fill"
+            class="batch-progress-fill{% if batch_progress and batch_progress.get('status') == 'completed' %} is-complete{% endif %}"
+            style="width: {{ batch_pct }}%;"
+          ></div>
+        </div>
+        <span id="batch-progress-pct" class="batch-progress-pct">{{ batch_pct }}%</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById("batch-form");
+      if (!form) return;
+
+      const warning = document.getElementById("batch-speed-warning");
+      const progressPanel = document.getElementById("batch-progress-panel");
+      const progressText = document.getElementById("batch-progress-text");
+      const progressFill = document.getElementById("batch-progress-fill");
+      const progressPct = document.getElementById("batch-progress-pct");
+      const progressTrack = document.getElementById("batch-progress-track");
+
+      function updateBatchProgress(done, total, status, failed) {
+        const safeTotal = Math.max(1, total || 1);
+        const safeDone = Math.min(Math.max(0, done || 0), safeTotal);
+        const pct = Math.round((safeDone / safeTotal) * 100);
+        const failedNote = failed ? " (" + failed + " failed)" : "";
+        progressText.textContent =
+          "Status: " + status + " — " + safeDone + " / " + safeTotal + " (" + pct + "%)" + failedNote;
+        if (progressFill) {
+          progressFill.style.width = pct + "%";
+          progressFill.classList.toggle("is-complete", status === "completed" || pct >= 100);
+        }
+        if (progressPct) progressPct.textContent = pct + "%";
+        if (progressTrack) {
+          progressTrack.setAttribute("aria-valuenow", String(safeDone));
+          progressTrack.setAttribute("aria-valuemax", String(safeTotal));
+        }
+      }
+      const batchNameInput = form.querySelector('input[name="batch_name"]');
+      const outputDirHidden = document.getElementById("output_dir");
+      const inputDirHidden = document.getElementById("input_dir");
+      const inputPathDisplay = document.getElementById("input_path_display");
+      const inputPathChangeBtn = document.getElementById("input_path_change_btn");
+      const outputPathDisplay = document.getElementById("output_path_display");
+      const outputPathChangeBtn = document.getElementById("output_path_change_btn");
+      const pollName = {{ batch_name|default('')|tojson }};
+      const pollOutputDir = {{ batch_output_dir|default('static/batch_outputs')|tojson }};
+      const defaultBatchName = {{ batch_name_default|tojson }};
+      const vehicleSection = document.getElementById("batch-vehicle-section");
+      const vehiclePanel = document.getElementById("batch-vehicle-panel");
+      const vehiclePrompt = document.getElementById("batch-vehicle-prompt");
+      const batchNameGroup = document.getElementById("batch-name-group");
+      const batchNamePrompt = document.getElementById("batch-name-prompt");
+      const overrideBatchInput = document.getElementById("override_batch");
+      const batchExistsOnLoad = {{ batch_name_exists|default(false)|tojson }};
+      const vehicleRequiredOnLoad = {{ batch_vehicle_required|default(false)|tojson }};
+
+      function effectiveBatchName() {
+        const raw = (batchNameInput?.value || "").trim();
+        return raw || defaultBatchName;
+      }
+
+      function normalizePathBase(value) {
+        return String(value || "")
+          .trim()
+          .replace(/\\/g, "/")
+          .replace(/\/+$/, "");
+      }
+
+      function joinOutputPath(base, batchName) {
+        const cleanBase = normalizePathBase(base) || "static/batch_outputs";
+        const cleanName = String(batchName || "").trim();
+        return cleanName ? cleanBase + "/" + cleanName : cleanBase + "/";
+      }
+
+      function getOutputBase() {
+        return normalizePathBase(outputDirHidden?.value || "static/batch_outputs");
+      }
+
+      function updateOutputPathDisplay() {
+        if (!outputPathDisplay || outputPathUnlocked) return;
+        const full = joinOutputPath(getOutputBase(), effectiveBatchName());
+        outputPathDisplay.value = full;
+        outputPathDisplay.title = full.replace(/\/$/, "");
+      }
+
+      function setInputPathTitle() {
+        if (!inputPathDisplay) return;
+        const rel = normalizePathBase(inputPathDisplay.value || inputDirHidden?.value || "static/inputs");
+        inputPathDisplay.title = rel;
+      }
+
+      let inputPathUnlocked = false;
+      inputPathChangeBtn?.addEventListener("click", () => {
+        if (!inputPathDisplay || !inputDirHidden) return;
+        if (!inputPathUnlocked) {
+          inputPathDisplay.removeAttribute("readonly");
+          inputPathDisplay.focus();
+          inputPathChangeBtn.textContent = "Done";
+          inputPathUnlocked = true;
+        } else {
+          const val = normalizePathBase(inputPathDisplay.value) || "static/inputs";
+          inputPathDisplay.value = val;
+          inputDirHidden.value = val;
+          inputPathDisplay.setAttribute("readonly", "");
+          inputPathChangeBtn.textContent = "Change path";
+          inputPathUnlocked = false;
+          setInputPathTitle();
+        }
+      });
+
+      inputPathDisplay?.addEventListener("input", () => {
+        if (!inputPathUnlocked || !inputDirHidden) return;
+        inputDirHidden.value = normalizePathBase(inputPathDisplay.value) || "static/inputs";
+        setInputPathTitle();
+      });
+
+      let outputPathUnlocked = false;
+      outputPathChangeBtn?.addEventListener("click", () => {
+        if (!outputPathDisplay || !outputDirHidden) return;
+        if (!outputPathUnlocked) {
+          outputPathDisplay.value = getOutputBase();
+          outputPathDisplay.removeAttribute("readonly");
+          outputPathDisplay.focus();
+          outputPathChangeBtn.textContent = "Done";
+          outputPathUnlocked = true;
+        } else {
+          const val = normalizePathBase(outputPathDisplay.value) || "static/batch_outputs";
+          outputDirHidden.value = val;
+          outputPathDisplay.setAttribute("readonly", "");
+          outputPathChangeBtn.textContent = "Change path";
+          outputPathUnlocked = false;
+          updateOutputPathDisplay();
+        }
+      });
+
+      outputPathDisplay?.addEventListener("input", () => {
+        if (!outputPathUnlocked || !outputDirHidden) return;
+        outputDirHidden.value = normalizePathBase(outputPathDisplay.value) || "static/batch_outputs";
+      });
+
+      batchNameInput?.addEventListener("input", () => {
+        updateOutputPathDisplay();
+        clearBatchNamePrompt();
+        if (overrideBatchInput) overrideBatchInput.value = "0";
+      });
+      updateOutputPathDisplay();
+      setInputPathTitle();
+
+      function scrollToElement(el) {
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      function showVehiclePrompt() {
+        if (vehiclePrompt) vehiclePrompt.hidden = false;
+        vehicleSection?.classList.add("is-attention");
+        scrollToElement(vehiclePanel || vehicleSection);
+      }
+
+      function clearVehiclePrompt() {
+        if (vehiclePrompt) vehiclePrompt.hidden = true;
+        vehicleSection?.classList.remove("is-attention");
+      }
+
+      function showBatchNamePrompt() {
+        if (batchNamePrompt) batchNamePrompt.hidden = false;
+        batchNameGroup?.classList.add("is-attention");
+        scrollToElement(batchNameGroup || batchNameInput);
+      }
+
+      function clearBatchNamePrompt() {
+        if (batchNamePrompt) batchNamePrompt.hidden = true;
+        batchNameGroup?.classList.remove("is-attention");
+      }
+
+      function isResumeSubmit(submitter) {
+        const action = submitter?.getAttribute("formaction") || "";
+        return action.includes("resume");
+      }
+
+      function isCancelSubmit(submitter) {
+        const action = submitter?.getAttribute("formaction") || "";
+        return action.includes("cancel");
+      }
+
+      function isStartSubmit(submitter) {
+        return !isResumeSubmit(submitter) && !isCancelSubmit(submitter);
+      }
+
+      async function batchFolderExists(name, dir) {
+        const qs =
+          "batch_name=" + encodeURIComponent(name) +
+          "&output_dir=" + encodeURIComponent(dir);
+        const response = await fetch("{{ url_for('batch_exists') }}?" + qs);
+        if (!response.ok) return false;
+        const data = await response.json();
+        return Boolean(data && data.exists);
+      }
+
+      function syncVehicleRow(checkbox) {
+        const row = checkbox.closest(".batch-check");
+        if (row) row.classList.toggle("is-on", checkbox.checked);
+      }
+
+      form.querySelectorAll(".batch-vehicle-enabled").forEach((cb) => {
+        syncVehicleRow(cb);
+        cb.addEventListener("change", () => {
+          syncVehicleRow(cb);
+          updateSpeedWarning();
+          if (cb.checked) clearVehiclePrompt();
+        });
+      });
+
+      function updateSpeedWarning() {
+        let show = false;
+        form.querySelectorAll(".batch-vehicle-enabled:checked").forEach((cb) => {
+          const select = form.querySelector('select[name="speed_' + cb.dataset.vehicle + '"]');
+          if (select && select.options.length > 1) show = true;
+        });
+        if (warning) warning.hidden = !show;
+      }
+
+      form.querySelectorAll(".batch-speed-dropdown").forEach((sel) => {
+        sel.addEventListener("change", updateSpeedWarning);
+      });
+
+      function syncBatchPaths() {
+        if (inputPathUnlocked && inputPathDisplay && inputDirHidden) {
+          const val = normalizePathBase(inputPathDisplay.value) || "static/inputs";
+          inputPathDisplay.value = val;
+          inputDirHidden.value = val;
+        }
+        if (outputPathUnlocked && outputPathDisplay && outputDirHidden) {
+          const val = normalizePathBase(outputPathDisplay.value) || "static/batch_outputs";
+          outputDirHidden.value = val;
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        const submitter = event.submitter;
+        if (isResumeSubmit(submitter) || isCancelSubmit(submitter)) {
+          syncBatchPaths();
+          return;
+        }
+
+        if (!isStartSubmit(submitter)) {
+          syncBatchPaths();
+          return;
+        }
+
+        event.preventDefault();
+        syncBatchPaths();
+
+        const selectedVehicles = form.querySelectorAll(".batch-vehicle-enabled:checked");
+        if (!selectedVehicles.length) {
+          showVehiclePrompt();
+          return;
+        }
+        clearVehiclePrompt();
+
+        let missingLength = false;
+        let lengthTarget = null;
+        form.querySelectorAll(".batch-vehicle-enabled:checked").forEach((cb) => {
+          if (cb.dataset.needsLength !== "1") return;
+          const lenInput = form.querySelector('input[name="length_' + cb.dataset.vehicle + '"]');
+          if (!lenInput || !lenInput.value.trim()) {
+            missingLength = true;
+            lengthTarget = lenInput || cb.closest(".batch-check");
+          }
+        });
+        if (missingLength) {
+          scrollToElement(lengthTarget || vehiclePanel || vehicleSection);
+          lengthTarget?.focus?.();
+          return;
+        }
+
+        if (overrideBatchInput?.value !== "1") {
+          const name = effectiveBatchName();
+          const dir = getOutputBase();
+          try {
+            const exists = await batchFolderExists(name, dir);
+            if (exists) {
+              const fullPath = joinOutputPath(dir, name).replace(/\/$/, "");
+              const overwrite = window.confirm(
+                "A batch folder already exists at:\n\n" + fullPath +
+                "\n\n(relative to project root)\n\nOverwrite it and start a new batch?"
+              );
+              if (!overwrite) {
+                showBatchNamePrompt();
+                batchNameInput?.focus();
+                batchNameInput?.select();
+                return;
+              }
+              overrideBatchInput.value = "1";
+            }
+          } catch (_err) {
+            // If the exists check fails, allow the server to validate.
+          }
+        }
+
+        form.submit();
+      });
+
+      if (vehicleRequiredOnLoad) {
+        showVehiclePrompt();
+      }
+      if (batchExistsOnLoad) {
+        showBatchNamePrompt();
+        scrollToElement(batchNameGroup || batchNameInput);
+      }
+
+      document.getElementById("batch-select-all")?.addEventListener("click", () => {
+        form.querySelectorAll(".batch-vehicle-enabled").forEach((cb) => {
+          cb.checked = true;
+          syncVehicleRow(cb);
+          const row = cb.closest(".batch-check");
+          const select = row?.querySelector(".batch-speed-dropdown");
+          if (select && select.options.length) {
+            select.selectedIndex = Math.floor(select.options.length / 2);
+          }
+        });
+        updateSpeedWarning();
+      });
+
+      function isBatchProgressActive(data) {
+        return Boolean(data && data.status && data.status !== "idle");
+      }
+
+      function activeBatchPollTarget() {
+        return {
+          name: effectiveBatchName(),
+          dir: normalizePathBase(outputDirHidden?.value || pollOutputDir || "static/batch_outputs"),
+        };
+      }
+
+      const initialProgress = {{ batch_progress|tojson if batch_progress else 'null' }};
+      const expectedRunStartedAt = initialProgress?.started_at || null;
+      const expectedRunTotal = initialProgress?.total || null;
+
+      function isStaleCompletedProgress(data) {
+        if (!data || data.status !== "completed") return false;
+        if (!expectedRunStartedAt || !data.started_at) return false;
+        return data.started_at !== expectedRunStartedAt;
+      }
+
+      if (progressPanel && isBatchProgressActive(initialProgress)) {
+        progressPanel.hidden = false;
+        updateBatchProgress(
+          initialProgress.completed || 0,
+          initialProgress.total || 1,
+          initialProgress.status,
+          initialProgress.failed || 0,
+        );
+        if (initialProgress.status === "running") {
+          const poll = () => {
+            const target = activeBatchPollTarget();
+            if (!target.name) return;
+            const qs =
+              "batch_name=" + encodeURIComponent(target.name) +
+              "&output_dir=" + encodeURIComponent(target.dir);
+            fetch("{{ url_for('batch_status') }}?" + qs)
+              .then((r) => r.json())
+              .then((data) => {
+                if (!isBatchProgressActive(data)) return;
+                if (isStaleCompletedProgress(data)) {
+                  setTimeout(poll, 1000);
+                  return;
+                }
+                const total = data.total || expectedRunTotal || 1;
+                const done = data.completed || 0;
+                updateBatchProgress(done, total, data.status, data.failed);
+                if (data.status === "running") setTimeout(poll, 2000);
+              })
+              .catch(() => setTimeout(poll, 4000));
+          };
+          poll();
+        }
+      }
+    })();
+  </script>
 
   {% elif active_tab == 'compare' %}
 

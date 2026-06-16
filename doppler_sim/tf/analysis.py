@@ -13,10 +13,13 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+import warnings
 
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
+
+from doppler_sim.spec_panel_style import add_spec_colorbar, spec_panel_subplots, spec_panel_to_b64
 
 __all__ = [
     "ReassignedAtoms",
@@ -70,14 +73,20 @@ def compute_reassigned_atoms(
     window: str = "hann",
     fill_nan: bool = True,
 ) -> ReassignedAtoms:
-    freqs, times, mags = librosa.reassigned_spectrogram(
-        y,
-        sr=sr,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        window=window,
-        fill_nan=fill_nan,
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*where.*used without.*out.*",
+            category=UserWarning,
+        )
+        freqs, times, mags = librosa.reassigned_spectrogram(
+            y,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            window=window,
+            fill_nan=fill_nan,
+        )
     return ReassignedAtoms(
         times=np.asarray(times),
         freqs=np.asarray(freqs),
@@ -207,15 +216,39 @@ def _add_t_cpa_line(ax: plt.Axes, t_cpa: float | None, *, style: str) -> None:
     ax.axvline(t_cpa, color=color, linestyle="--", linewidth=1.2, alpha=0.85, label="t_CPA")
 
 
-def _fig_to_b64(fig: plt.Figure, dpi: int = 100) -> str:
-    import base64
-    from io import BytesIO
+def _power_to_db(power: np.ndarray, *, ref: Any = np.max) -> np.ndarray:
+    """Convert power spectrogram to dB without librosa/numpy `where` warnings."""
+    p = np.asarray(power, dtype=np.float64)
+    if ref is None:
+        ref_val = float(np.nanmax(p))
+    elif callable(ref):
+        ref_val = float(ref(p))
+    else:
+        ref_val = float(ref)
+    if not np.isfinite(ref_val) or ref_val <= 0.0:
+        ref_val = 1.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        db = 10.0 * np.log10(np.maximum(p, 0.0) / ref_val)
+    db[~np.isfinite(p)] = np.nan
+    return db
 
-    buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor=fig.get_facecolor())
-    plt.close(fig)
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode("ascii")
+
+def _stft_grid_axes(atoms: ReassignedAtoms) -> tuple[np.ndarray, np.ndarray]:
+    """Regular monotonic STFT axes for plotting reassigned magnitudes."""
+    n_freq, n_time = atoms.mags.shape
+    times = librosa.frames_to_time(
+        np.arange(n_time),
+        sr=atoms.sr,
+        hop_length=atoms.hop_length,
+    )
+    freqs = librosa.fft_frequencies(sr=atoms.sr, n_fft=atoms.n_fft)
+    if freqs.shape[0] != n_freq:
+        freqs = freqs[:n_freq]
+    return times, freqs
+
+
+def _fig_to_b64(fig: plt.Figure, dpi: int = 100) -> str:
+    return spec_panel_to_b64(fig)
 
 
 def plot_stft_specg_b64(
@@ -232,15 +265,14 @@ def plot_stft_specg_b64(
     keep = freqs <= fmax_hz
     power = power[keep]
     freqs = freqs[keep]
-    power_db = librosa.power_to_db(power, ref=np.max)
+    power_db = _power_to_db(power, ref=np.max)
     if shared_vmax_db is not None:
         vmin = shared_vmax_db - 80.0
         vmax = shared_vmax_db
     else:
         vmin = vmax = None
 
-    fig, ax = plt.subplots(figsize=(6.2, 3.4), facecolor="#0f1117")
-    ax.set_facecolor("#0f1117")
+    fig, ax = spec_panel_subplots()
     mesh = ax.pcolormesh(
         times,
         freqs,
@@ -256,8 +288,7 @@ def plot_stft_specg_b64(
     ax.set_title(title, color="white", fontsize=10, pad=6)
     ax.tick_params(colors="#aab0c0", labelsize=7)
     _add_t_cpa_line(ax, t_cpa, style="explorer")
-    fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
-    fig.tight_layout()
+    add_spec_colorbar(fig, ax, mesh)
     return _fig_to_b64(fig)
 
 
@@ -269,18 +300,18 @@ def plot_reassigned_specg_b64(
     t_cpa: float | None = None,
     shared_vmax_db: float | None = None,
 ) -> str:
-    mags_db = librosa.power_to_db(atoms.mags, ref=np.max)
+    mags_db = _power_to_db(atoms.mags, ref=np.max)
+    times, freqs = _stft_grid_axes(atoms)
     if shared_vmax_db is not None:
         vmin = shared_vmax_db - 80.0
         vmax = shared_vmax_db
     else:
         vmin = vmax = None
 
-    fig, ax = plt.subplots(figsize=(6.2, 3.4), facecolor="#0f1117")
-    ax.set_facecolor("#0f1117")
+    fig, ax = spec_panel_subplots()
     mesh = ax.pcolormesh(
-        atoms.times,
-        atoms.freqs,
+        times,
+        freqs,
         mags_db,
         shading="auto",
         cmap="magma",
@@ -293,8 +324,7 @@ def plot_reassigned_specg_b64(
     ax.set_title(title, color="white", fontsize=10, pad=6)
     ax.tick_params(colors="#aab0c0", labelsize=7)
     _add_t_cpa_line(ax, t_cpa, style="explorer")
-    fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
-    fig.tight_layout()
+    add_spec_colorbar(fig, ax, mesh)
     return _fig_to_b64(fig)
 
 
@@ -309,7 +339,7 @@ def plot_stft_reassigned_comparison_b64(
     """Side-by-side STFT vs reassigned with shared dB reference."""
     freqs, times, power = compute_stft_power(y, sr, params)
     keep = freqs <= fmax_hz
-    power_db = librosa.power_to_db(power[keep], ref=np.max)
+    power_db = _power_to_db(power[keep], ref=np.max)
     atoms = compute_reassigned_atoms(
         y,
         sr,
@@ -317,7 +347,7 @@ def plot_stft_reassigned_comparison_b64(
         hop_length=params.hop_length,
         window=params.window,
     )
-    reassigned_db = librosa.power_to_db(atoms.mags, ref=np.max)
+    reassigned_db = _power_to_db(atoms.mags, ref=np.max)
     shared_vmax = float(max(np.nanmax(power_db), np.nanmax(reassigned_db)))
 
     stft_img = plot_stft_specg_b64(
@@ -361,8 +391,9 @@ def plot_reassigned_passby(
         window=window,
     )
     plt.figure(figsize=(10, 4))
-    mags_db = librosa.power_to_db(atoms.mags, ref=np.max)
-    plt.pcolormesh(atoms.times, atoms.freqs, mags_db, shading="auto", cmap="magma")
+    mags_db = _power_to_db(atoms.mags, ref=np.max)
+    times, freqs = _stft_grid_axes(atoms)
+    plt.pcolormesh(times, freqs, mags_db, shading="auto", cmap="magma")
     plt.colorbar(format="%+2.0f dB")
     plt.title(title)
     plt.xlabel("Time (s)")

@@ -19,9 +19,20 @@ ENV/
 instance/
 .webassets-cache
 
+# Static folder (batch I/O + web assets)
+static/*
+!static/inputs/
+!static/outputs/
+static/inputs/*
+!static/inputs/.gitkeep
+!static/batch_outputs/
+static/batch_outputs/*
+!static/batch_outputs/.gitkeep
+static/outputs/*
+!static/outputs/.gitkeep
+
 # Generated files
 renders/
-static/
 uploads/
 benchmarks/test_output/
 
