@@ -487,6 +487,36 @@
       grid-template-columns: repeat(2, 1fr);
       gap: 0.35rem 1rem;
     }
+    body.specg-page .batch-spec-table {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    body.specg-page .batch-spec-head,
+    body.specg-page .batch-spec-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem;
+      gap: 0.5rem 0.75rem;
+      align-items: center;
+    }
+    body.specg-page .batch-spec-head {
+      font-size: 0.75rem;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-bottom: 0.15rem;
+      border-bottom: 1px solid #30363d;
+    }
+    body.specg-page .batch-spec-head span:not(:first-child) {
+      text-align: center;
+    }
+    body.specg-page .batch-spec-name {
+      font-size: 0.88rem;
+      color: #c9d1d9;
+    }
+    body.specg-page .batch-spec-row .batch-spec-check {
+      justify-content: center;
+    }
     body.specg-page .batch-spec-check {
       display: flex;
       align-items: center;
@@ -633,6 +663,18 @@
       font-size: 0.9rem;
       font-weight: 600;
       color: #3fb950;
+    }
+    body.specg-page .batch-progress-estimate,
+    body.specg-page .batch-progress-timing {
+      margin: 0;
+      color: #8b949e;
+      font-size: 0.85rem;
+    }
+    body.specg-page .batch-progress-estimate {
+      margin-bottom: 0.5rem;
+    }
+    body.specg-page .batch-progress-timing {
+      margin-top: 0.5rem;
     }
     body.specg-page .batch-vehicle-panel {
       max-height: 420px;
@@ -1259,6 +1301,11 @@
             <label class="batch-param-label" for="t_out_s">Output duration (s)</label>
             <input type="number" id="t_out_s" name="t_out_s" step="any" value="10" />
           </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label" for="num_workers">Parallel workers</label>
+            <input type="number" id="num_workers" name="num_workers" min="1" max="32" value="{{ batch_num_workers_default }}" />
+            <p class="batch-hint" style="margin-top: 0.35rem;">Separate processes per worker (default: CPU count − 1). Each process generates one clip at a time on its own CPU core.</p>
+          </div>
         </div>
 
         <div class="batch-param-group" style="margin-top: 1rem;">
@@ -1364,15 +1411,33 @@
 
         <div class="batch-section">
           <h3 class="batch-section-title">Spectrogram Types</h3>
-          <p class="batch-hint">Same transforms as Spectrogram Explorer. Only checked types are exported.</p>
-          <div class="batch-spec-grid">
+          <p class="batch-hint">
+            Same transforms as Spectrogram Explorer. Check <strong>NPY</strong> to export array files;
+            check <strong>PNG</strong> to export panel images for that type (PNG requires NPY).
+            All PNG checkboxes are off by default.
+          </p>
+          <div class="batch-spec-table">
+            <div class="batch-spec-head">
+              <span>Type</span>
+              <span>NPY</span>
+              <span>PNG</span>
+            </div>
             {% for key, label, default_on in batch_spec_types %}
-            <label class="batch-spec-check">
-              <input type="checkbox" name="spec_{{ key }}" {% if default_on %}checked{% endif %} />
-              {{ label }}
-            </label>
+            <div class="batch-spec-row">
+              <span class="batch-spec-name">{{ label }}</span>
+              <label class="batch-spec-check">
+                <input type="checkbox" name="spec_{{ key }}" {% if default_on %}checked{% endif %} />
+              </label>
+              <label class="batch-spec-check">
+                <input type="checkbox" name="spec_png_{{ key }}" />
+              </label>
+            </div>
             {% endfor %}
           </div>
+          <label class="batch-spec-check" style="margin-top: 0.75rem;">
+            <input type="checkbox" name="generate_combined_png" />
+            Combined PNG (all selected PNG types in one image)
+          </label>
           <div class="batch-param-group" style="margin-top: 1rem;">
             <label class="batch-param-label" for="specg_fmax_hz">Max frequency (Hz)</label>
             <input type="number" id="specg_fmax_hz" name="specg_fmax_hz" min="100" max="11025" step="any" value="1250" />
@@ -1385,12 +1450,25 @@
           <h3 class="batch-section-title">Speed (v₂)</h3>
           <p class="batch-hint">Random render speed per clip.</p>
           <div class="batch-param-group">
-            <label class="batch-param-label">Minimum (m/s)</label>
-            <input type="number" name="speed_mps_min" step="any" value="10" />
+            <label class="batch-param-label">Speed unit</label>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <label class="batch-spec-check">
+                <input type="radio" name="speed_unit" value="mps" {% if batch_speed_unit|default('mps') != 'kmph' %}checked{% endif %} />
+                m/s
+              </label>
+              <label class="batch-spec-check">
+                <input type="radio" name="speed_unit" value="kmph" {% if batch_speed_unit|default('mps') == 'kmph' %}checked{% endif %} />
+                km/h
+              </label>
+            </div>
           </div>
           <div class="batch-param-group">
-            <label class="batch-param-label">Maximum (m/s)</label>
-            <input type="number" name="speed_mps_max" step="any" value="40" />
+            <label class="batch-param-label" id="batch-speed-min-label">Minimum ({% if batch_speed_unit|default('mps') == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+            <input type="number" id="batch-speed-min" name="speed_mps_min" step="any" value="{% if batch_speed_unit|default('mps') == 'kmph' %}36{% else %}10{% endif %}" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label" id="batch-speed-max-label">Maximum ({% if batch_speed_unit|default('mps') == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+            <input type="number" id="batch-speed-max" name="speed_mps_max" step="any" value="{% if batch_speed_unit|default('mps') == 'kmph' %}144{% else %}40{% endif %}" />
           </div>
         </div>
 
@@ -1441,6 +1519,17 @@
         </div>
       </div>
 
+      <div class="batch-section" style="margin-top: 0.5rem; margin-bottom: 0.25rem;">
+        <label class="batch-spec-check">
+          <input type="checkbox" name="simple_generate" />
+          Simple generate
+        </label>
+        <p class="batch-hint" style="margin-top: 0.35rem;">
+          Export only audio, spectrogram NPY files, <code>velocity.npy</code>, and <code>cpa.npy</code>
+          (constant render speed and t<sub>CPA</sub> time in seconds).
+        </p>
+      </div>
+
       <div class="batch-actions">
         <button type="submit" class="batch-btn" {% if batch_running %}disabled{% endif %}>Start batch</button>
         <button type="submit" formaction="{{ url_for('batch_resume') }}" class="batch-btn batch-btn-secondary" {% if batch_running %}disabled{% endif %}>Resume batch</button>
@@ -1465,6 +1554,7 @@
         Status: {{ batch_progress.get('status', 'unknown') }} — {{ batch_done }} / {{ batch_total }} ({{ batch_pct }}%)
         {% endif %}
       </p>
+      <p id="batch-progress-estimate" class="batch-progress-estimate">Estimated time remaining: —</p>
       <div class="batch-progress-row">
         <div class="batch-progress-track" role="progressbar"
           aria-valuemin="0"
@@ -1479,6 +1569,7 @@
         </div>
         <span id="batch-progress-pct" class="batch-progress-pct">{{ batch_pct }}%</span>
       </div>
+      <p id="batch-progress-timing" class="batch-progress-timing">Avg wall per clip: —</p>
     </section>
   </main>
 
@@ -1493,14 +1584,131 @@
       const progressFill = document.getElementById("batch-progress-fill");
       const progressPct = document.getElementById("batch-progress-pct");
       const progressTrack = document.getElementById("batch-progress-track");
+      const progressEstimate = document.getElementById("batch-progress-estimate");
+      const progressTiming = document.getElementById("batch-progress-timing");
 
-      function updateBatchProgress(done, total, status, failed) {
+      const timingState = {
+        startedAt: null,
+        finishedAt: null,
+        frozenAtMs: null,
+        completed: 0,
+        total: 1,
+        status: "idle",
+        numWorkers: 1,
+      };
+      const clientRunStartedMs = Date.now();
+      let timingTicker = null;
+
+      function parseUtcIso(iso) {
+        if (!iso) return null;
+        const t = Date.parse(iso);
+        return Number.isFinite(t) ? t : null;
+      }
+
+      function formatDuration(ms) {
+        if (!Number.isFinite(ms) || ms < 0) return "—";
+        const totalSec = Math.round(ms / 1000);
+        if (totalSec < 60) return totalSec + " s";
+        const min = Math.floor(totalSec / 60);
+        const sec = totalSec % 60;
+        if (min < 60) return min + " min " + sec + " s";
+        const hr = Math.floor(min / 60);
+        const remMin = min % 60;
+        return hr + " h " + remMin + " min";
+      }
+
+      function updateBatchTiming() {
+        if (!progressEstimate || !progressTiming) return;
+
+        let startMs = parseUtcIso(timingState.startedAt);
+        if (!startMs && timingState.status === "running") {
+          startMs = clientRunStartedMs;
+        }
+        const finishedMs = parseUtcIso(timingState.finishedAt);
+        const done = Math.max(0, timingState.completed || 0);
+        const total = Math.max(1, timingState.total || 1);
+        const remaining = Math.max(0, total - done);
+        const status = timingState.status || "idle";
+        const allClipsDone = done >= total && total > 0;
+
+        if (allClipsDone && timingState.frozenAtMs == null) {
+          timingState.frozenAtMs = finishedMs != null ? finishedMs : Date.now();
+          stopTimingTicker();
+        }
+
+        const isFinished =
+          status === "completed" || status === "cancelled" || allClipsDone;
+        const endMs = isFinished
+          ? (finishedMs != null ? finishedMs : timingState.frozenAtMs || Date.now())
+          : Date.now();
+
+        if (!startMs) {
+          progressEstimate.textContent = "Estimated time remaining: —";
+          progressTiming.textContent = "Avg wall per clip: —";
+          return;
+        }
+
+        const elapsedMs = Math.max(0, endMs - startMs);
+        const perClipMs = done > 0 ? elapsedMs / done : null;
+        const workers = Math.max(1, timingState.numWorkers || 1);
+
+        progressTiming.textContent =
+          "Avg wall per clip: " + (perClipMs != null ? formatDuration(perClipMs) : "—") +
+          (workers > 1 && perClipMs != null
+            ? " · ~" + formatDuration(perClipMs * workers) + " single-thread equivalent"
+            : "");
+
+        if (status === "completed" || allClipsDone) {
+          progressEstimate.textContent = "Estimated time remaining: complete";
+        } else if (status === "cancelled") {
+          progressEstimate.textContent = "Estimated time remaining: —";
+        } else if (perClipMs != null && done > 0 && remaining > 0) {
+          progressEstimate.textContent =
+            "Estimated time remaining: " + formatDuration(perClipMs * remaining);
+        } else if (perClipMs != null && done > 0) {
+          progressEstimate.textContent = "Estimated time remaining: finishing…";
+        } else {
+          progressEstimate.textContent = "Estimated time remaining: calculating…";
+        }
+      }
+
+      function setTimingState(patch) {
+        Object.assign(timingState, patch);
+        updateBatchTiming();
+      }
+
+      function startTimingTicker() {
+        if (timingTicker != null) return;
+        timingTicker = window.setInterval(updateBatchTiming, 1000);
+      }
+
+      function stopTimingTicker() {
+        if (timingTicker == null) return;
+        window.clearInterval(timingTicker);
+        timingTicker = null;
+      }
+
+      function updateBatchProgress(done, total, status, failed, timingPatch) {
         const safeTotal = Math.max(1, total || 1);
         const safeDone = Math.min(Math.max(0, done || 0), safeTotal);
         const pct = Math.round((safeDone / safeTotal) * 100);
         const failedNote = failed ? " (" + failed + " failed)" : "";
+        const inFlight = timingPatch?.inFlight;
+        const workers = timingPatch?.numWorkers || timingState.numWorkers || 1;
+        let displayStatus = status;
+        if (status === "running" && safeDone >= safeTotal) {
+          displayStatus = "finalizing";
+        }
+        let workersNote = "";
+        if (workers > 1) {
+          workersNote = " · " + workers + " workers";
+          if (typeof inFlight === "number" && inFlight > 0) {
+            workersNote += " (" + inFlight + " active)";
+          }
+        }
         progressText.textContent =
-          "Status: " + status + " — " + safeDone + " / " + safeTotal + " (" + pct + "%)" + failedNote;
+          "Status: " + displayStatus + " — " + safeDone + " / " + safeTotal + " (" + pct + "%)" +
+          failedNote + workersNote;
         if (progressFill) {
           progressFill.style.width = pct + "%";
           progressFill.classList.toggle("is-complete", status === "completed" || pct >= 100);
@@ -1509,6 +1717,28 @@
         if (progressTrack) {
           progressTrack.setAttribute("aria-valuenow", String(safeDone));
           progressTrack.setAttribute("aria-valuemax", String(safeTotal));
+        }
+        if (timingPatch) {
+          setTimingState({
+            completed: safeDone,
+            total: safeTotal,
+            status: status,
+            ...timingPatch,
+          });
+        } else {
+          setTimingState({
+            completed: safeDone,
+            total: safeTotal,
+            status: status,
+          });
+        }
+        if (status === "running") {
+          startTimingTicker();
+        } else {
+          stopTimingTicker();
+        }
+        if (safeDone >= safeTotal && safeTotal > 0) {
+          stopTimingTicker();
         }
       }
       const batchNameInput = form.querySelector('input[name="batch_name"]');
@@ -1700,6 +1930,41 @@
         sel.addEventListener("change", updateSpeedWarning);
       });
 
+      const KMH_PER_MPS = 3.6;
+      const batchSpeedMin = document.getElementById("batch-speed-min");
+      const batchSpeedMax = document.getElementById("batch-speed-max");
+      const batchSpeedMinLabel = document.getElementById("batch-speed-min-label");
+      const batchSpeedMaxLabel = document.getElementById("batch-speed-max-label");
+      let batchSpeedUnit = {{ batch_speed_unit|default('mps')|tojson }};
+
+      function updateBatchSpeedUnitLabels(unit) {
+        const suffix = unit === "kmph" ? "km/h" : "m/s";
+        if (batchSpeedMinLabel) batchSpeedMinLabel.textContent = "Minimum (" + suffix + ")";
+        if (batchSpeedMaxLabel) batchSpeedMaxLabel.textContent = "Maximum (" + suffix + ")";
+      }
+
+      form.querySelectorAll('input[name="speed_unit"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          if (!radio.checked) return;
+          const newUnit = radio.value === "kmph" ? "kmph" : "mps";
+          if (newUnit === batchSpeedUnit) return;
+          [batchSpeedMin, batchSpeedMax].forEach((input) => {
+            if (!input) return;
+            let value = parseFloat(input.value);
+            if (!Number.isFinite(value)) return;
+            if (batchSpeedUnit === "mps" && newUnit === "kmph") {
+              value *= KMH_PER_MPS;
+            } else if (batchSpeedUnit === "kmph" && newUnit === "mps") {
+              value /= KMH_PER_MPS;
+            }
+            input.value = String(Math.round(value * 1000) / 1000);
+          });
+          batchSpeedUnit = newUnit;
+          updateBatchSpeedUnitLabels(newUnit);
+        });
+      });
+      updateBatchSpeedUnitLabels(batchSpeedUnit);
+
       function syncBatchPaths() {
         if (inputPathUnlocked && inputPathDisplay && inputDirHidden) {
           const val = normalizePathBase(inputPathDisplay.value) || "static/inputs";
@@ -1803,8 +2068,9 @@
       }
 
       function activeBatchPollTarget() {
+        const lockedName = (pollName || "").trim();
         return {
-          name: effectiveBatchName(),
+          name: lockedName || effectiveBatchName(),
           dir: normalizePathBase(outputDirHidden?.value || pollOutputDir || "static/batch_outputs"),
         };
       }
@@ -1826,6 +2092,11 @@
           initialProgress.total || 1,
           initialProgress.status,
           initialProgress.failed || 0,
+          {
+            startedAt: initialProgress.started_at || null,
+            finishedAt: initialProgress.finished_at || null,
+            numWorkers: initialProgress.num_workers || 1,
+          },
         );
         if (initialProgress.status === "running") {
           const poll = () => {
@@ -1837,17 +2108,31 @@
             fetch("{{ url_for('batch_status') }}?" + qs)
               .then((r) => r.json())
               .then((data) => {
-                if (!isBatchProgressActive(data)) return;
+                if (!isBatchProgressActive(data)) {
+                  if (timingState.status === "running") {
+                    setTimeout(poll, 1500);
+                  }
+                  return;
+                }
                 if (isStaleCompletedProgress(data)) {
                   setTimeout(poll, 1000);
                   return;
                 }
                 const total = data.total || expectedRunTotal || 1;
                 const done = data.completed || 0;
-                updateBatchProgress(done, total, data.status, data.failed);
-                if (data.status === "running") setTimeout(poll, 2000);
+                updateBatchProgress(done, total, data.status, data.failed, {
+                  startedAt: data.started_at || timingState.startedAt,
+                  finishedAt: data.finished_at || null,
+                  numWorkers: data.num_workers || timingState.numWorkers || 1,
+                  inFlight: data.in_flight,
+                });
+                if (data.status === "running") {
+                  setTimeout(poll, 1000);
+                } else if (data.status === "completed" || data.status === "cancelled") {
+                  updateBatchTiming();
+                }
               })
-              .catch(() => setTimeout(poll, 4000));
+              .catch(() => setTimeout(poll, 2000));
           };
           poll();
         }

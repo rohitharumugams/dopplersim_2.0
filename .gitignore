@@ -1,73 +1,125 @@
-# Node
-node_modules/
-
+# =============================================================================
 # Python
+# =============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 .venv/
-env/
 venv/
+env/
 ENV/
 *.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .cache/
 .matplotlib_cache/
 
-# Flask
+# =============================================================================
+# Node (if used)
+# =============================================================================
+node_modules/
+
+# =============================================================================
+# Environment & secrets
+# =============================================================================
+.env
+.env.*
+
+# =============================================================================
+# Flask / app runtime
+# =============================================================================
 instance/
 .webassets-cache
+renders/
+uploads/
 
-# Static folder (batch I/O + web assets)
-static/*
-!static/inputs/
-!static/outputs/
-static/inputs/*
-!static/inputs/.gitkeep
-!static/batch_outputs/
+# =============================================================================
+# Static assets (keep folder structure + .gitkeep only)
+# =============================================================================
+static/generated/
+static/plots/
 static/batch_outputs/*
 !static/batch_outputs/.gitkeep
+static/inputs/*
+!static/inputs/.gitkeep
 static/outputs/*
 !static/outputs/.gitkeep
 
-# Generated files
-renders/
-uploads/
-benchmarks/test_output/
+# Transient batch worker cache (not part of datasets)
+**/.signature_cache/
 
-# IDE
+# =============================================================================
+# LaTeX / presentations / local documents
+# =============================================================================
+*.tex
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.nav
+*.out
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+*.bcf
+*.run.xml
+latex/
+ref_docs/
+*.pdf
+*.pptx
+*.key
+
+# =============================================================================
+# Local media & assets (not part of the app repo)
+# =============================================================================
+images/
+audio/
+
+# =============================================================================
+# Benchmarks & local scripts scratch
+# =============================================================================
+benchmarks/test_output/
+/smoke*.py
+/bench*.py
+/prof.py
+
+# =============================================================================
+# IDE & editor
+# =============================================================================
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
 
+# =============================================================================
 # OS
+# =============================================================================
 .DS_Store
+**/.DS_Store
 Thumbs.db
 
+# =============================================================================
 # Logs
+# =============================================================================
 *.log
 
-# Local Notes and Tests
-ref_docs/
-*.pdf
-*test*.py
-
-# LaTeX paper (local draft)
-latex/
-DopplerSim_presentation.tex
-DopplerSim_comparison_presentation.tex
-
-# Assets (local)
-images/
-audio/
-
-# Environment variables
-.env
-
-# Markdown: track README files only (plan notes, audits, local docs stay untracked)
+# =============================================================================
+# Markdown: track README files only
+# =============================================================================
 *.md
 !README.md
 !**/README.md

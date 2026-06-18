@@ -11,6 +11,7 @@ from doppler_sim.specg.explorer import (
     SpecgStftParams,
     build_all_spectrograms,
     export_batch_spectrograms,
+    parse_batch_spec_png_types,
     parse_batch_spec_types,
     prepare_batch_spec_audio,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "SpecgStftParams",
     "build_all_spectrograms",
     "export_batch_spectrograms",
+    "parse_batch_spec_png_types",
     "parse_batch_spec_types",
     "prepare_batch_spec_audio",
 ]

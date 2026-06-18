@@ -14,12 +14,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 
-from doppler_sim.batch.constants import FEATURE_SR, PATH_TYPE_STRAIGHT, output_wav_name
+from doppler_sim.batch.constants import FEATURE_SR, PATH_TYPE_STRAIGHT, mps_to_display, output_wav_name
 from doppler_sim.batch.planner import BatchConfig, PlannedSample
 from doppler_sim.batch.vehicle_metadata import vehicle_display_name
 from doppler_sim.specg.explorer import (
     SPECG_DEFAULT_ANALYSIS,
-    SPECG_TYPE_BY_KEY,
     export_batch_spectrograms,
     prepare_batch_spec_audio,
 )
@@ -102,14 +101,16 @@ def _trajectory_from_plan(plan: PlannedSample, n: int) -> np.ndarray:
     return np.column_stack([t, x, y]).astype(np.float32)
 
 
-def _trajectory_plot(plan: PlannedSample, path: Path) -> None:
-    v = float(plan.speed_mps)
+def _trajectory_plot(plan: PlannedSample, path: Path, *, speed_unit: str = "mps") -> None:
+    v_mps = float(plan.speed_mps)
+    v_label = mps_to_display(plan.speed_mps, speed_unit)
+    unit = "km/h" if speed_unit == "kmph" else "m/s"
     d = float(plan.cpa_distance_m)
     t_cpa = float(plan.cpa_time_sec)
     t_out = float(plan.t_out_s)
 
-    x_start = v * (0.0 - t_cpa)
-    x_end = v * (t_out - t_cpa)
+    x_start = v_mps * (0.0 - t_cpa)
+    x_end = v_mps * (t_out - t_cpa)
     direction = "left_to_right" if x_end >= x_start else "right_to_left"
     arrow = "→" if direction == "left_to_right" else "←"
 
@@ -121,7 +122,7 @@ def _trajectory_plot(plan: PlannedSample, path: Path) -> None:
     ax.grid(True, linestyle=":", alpha=0.6, color="#c4c4c4")
 
     path_label = (
-        f"Path (Straight), pass-by, v={v:g}m/s, d={d:.1f}m, "
+        f"Path (Straight), pass-by, v={v_label:g} {unit}, d={d:.1f}m, "
         f"t_CPA={t_cpa:.2f}s, dir={direction}{arrow}"
     )
     ax.plot(
@@ -166,6 +167,63 @@ def _trajectory_plot(plan: PlannedSample, path: Path) -> None:
     plt.close(fig)
 
 
+def _display_speed(plan: PlannedSample, config: BatchConfig) -> float:
+    return mps_to_display(plan.speed_mps, config.speed_unit)
+
+
+def _speed_unit_label(unit: str) -> str:
+    return "km/h" if unit == "kmph" else "m/s"
+
+
+def _export_simple_sample_artifacts(
+    sample_dir: Path,
+    plan: PlannedSample,
+    y: np.ndarray,
+    config: BatchConfig,
+    wav_name: str,
+) -> dict[str, Any]:
+    """Minimal export: WAV, spectrogram NPY (+ optional PNG), velocity, CPA time."""
+    spec_out = _spec_dir(sample_dir)
+    analysis = SPECG_DEFAULT_ANALYSIS
+    fmax_hz = float(config.specg_fmax_hz)
+    y_spec, sr_spec = prepare_batch_spec_audio(y, FEATURE_SR)
+    speed_display = _display_speed(plan, config)
+    speed_label = int(speed_display) if speed_display == int(speed_display) else speed_display
+    unit_label = _speed_unit_label(config.speed_unit)
+    sample_title = f"{vehicle_display_name(plan.vehicle)} — {speed_label} {unit_label}"
+    exported = export_batch_spectrograms(
+        y_spec,
+        sr_spec,
+        fmax_hz,
+        analysis,
+        config.spectrogram_types,
+        spec_out,
+        sample_title=sample_title,
+        png_keys=config.spectrogram_png_types,
+        generate_combined=config.generate_combined_png,
+    )
+    np.save(sample_dir / "velocity.npy", np.array([_display_speed(plan, config)], dtype=np.float32))
+    np.save(sample_dir / "cpa.npy", np.array([plan.cpa_time_sec], dtype=np.float32))
+    speed_key = "speed_kmph" if config.speed_unit == "kmph" else "speed_mps"
+    return {
+        "wav_name": wav_name,
+        "wav_path": wav_name,
+        "labels": {
+            speed_key: _display_speed(plan, config),
+            "cpa_time_sec": plan.cpa_time_sec,
+        },
+        "spectrogram_exports": exported,
+        "combined_spectrogram": (
+            "spectrograms/combined.png"
+            if config.generate_combined_png
+            and exported
+            and config.spectrogram_png_types
+            and any(k in config.spectrogram_png_types for k in exported)
+            else None
+        ),
+    }
+
+
 def export_sample_artifacts(
     sample_dir: Path,
     plan: PlannedSample,
@@ -176,20 +234,26 @@ def export_sample_artifacts(
 ) -> dict[str, Any]:
     """Write WAV, selected spectrograms/, and metadata/ for one sample."""
     sample_dir.mkdir(parents=True, exist_ok=True)
-    spec_out = _spec_dir(sample_dir)
-    meta_out = _meta_dir(sample_dir)
 
     y = np.asarray(audio, dtype=np.float32)
 
-    wav_name = output_wav_name(plan.vehicle, plan.speed_mps)
+    wav_name = output_wav_name(plan.vehicle, plan.speed_mps, unit=config.speed_unit)
     wav_path = sample_dir / wav_name
     sf.write(wav_path, y, FEATURE_SR, subtype="PCM_16")
+
+    if config.simple_generate:
+        return _export_simple_sample_artifacts(sample_dir, plan, y, config, wav_name)
+
+    spec_out = _spec_dir(sample_dir)
+    meta_out = _meta_dir(sample_dir)
 
     analysis = SPECG_DEFAULT_ANALYSIS
     fmax_hz = float(config.specg_fmax_hz)
     y_spec, sr_spec = prepare_batch_spec_audio(y, FEATURE_SR)
-    speed_label = int(plan.speed_mps) if plan.speed_mps == int(plan.speed_mps) else plan.speed_mps
-    sample_title = f"{vehicle_display_name(plan.vehicle)} — {speed_label} m/s"
+    speed_display = _display_speed(plan, config)
+    speed_label = int(speed_display) if speed_display == int(speed_display) else speed_display
+    unit_label = _speed_unit_label(config.speed_unit)
+    sample_title = f"{vehicle_display_name(plan.vehicle)} — {speed_label} {unit_label}"
     exported = export_batch_spectrograms(
         y_spec,
         sr_spec,
@@ -197,13 +261,13 @@ def export_sample_artifacts(
         analysis,
         config.spectrogram_types,
         spec_out,
-        meta_out,
         sample_title=sample_title,
+        png_keys=config.spectrogram_png_types,
+        generate_combined=config.generate_combined_png,
     )
 
     if "stft" in exported:
-        stft_item = SPECG_TYPE_BY_KEY["stft"]
-        stft_tensor = stft_item.build_tensor(y_spec, sr_spec, fmax_hz, analysis)
+        stft_tensor = np.load(spec_out / "stft.npy")
         spectral = _derive_spectral_features(
             stft_tensor,
             y_spec,
@@ -218,22 +282,25 @@ def export_sample_artifacts(
 
     traj = _trajectory_from_plan(plan, len(y))
     np.save(meta_out / "trajectory.npy", traj)
-    _trajectory_plot(plan, sample_dir / "trajectory_plot.png")
+    _trajectory_plot(plan, sample_dir / "trajectory_plot.png", speed_unit=config.speed_unit)
 
     from doppler_sim.application import emitter_offsets
 
     offsets = emitter_offsets(plan.vehicle_length_m, plan.num_emitters)
     np.save(meta_out / "source_positions.npy", offsets.astype(np.float32))
 
-    np.save(meta_out / "speed.npy", np.array([plan.speed_mps], dtype=np.float32))
+    np.save(meta_out / "speed.npy", np.array([_display_speed(plan, config)], dtype=np.float32))
     np.save(meta_out / "distance.npy", np.array([plan.cpa_distance_m], dtype=np.float32))
     np.save(meta_out / "direction.npy", np.array([0], dtype=np.int32))
     np.save(meta_out / "cpa_time.npy", np.array([plan.cpa_time_sec], dtype=np.float32))
+    speed_key = "speed_kmph" if config.speed_unit == "kmph" else "speed_mps"
+    source_speed_key = "source_speed_kmph" if config.speed_unit == "kmph" else "source_speed_mps"
     labels = {
         "vehicle": plan.vehicle,
         "path_type": PATH_TYPE_STRAIGHT,
-        "source_speed_mps": plan.source_speed_mps,
-        "speed_mps": plan.speed_mps,
+        "speed_unit": config.speed_unit,
+        source_speed_key: mps_to_display(plan.source_speed_mps, config.speed_unit),
+        speed_key: _display_speed(plan, config),
         "cpa_distance_m": plan.cpa_distance_m,
         "cpa_time_sec": plan.cpa_time_sec,
     }
@@ -243,14 +310,17 @@ def export_sample_artifacts(
         "batch_id": batch_id,
         "sample_index": plan.index,
         "path_type": PATH_TYPE_STRAIGHT,
+        "speed_unit": config.speed_unit,
         "source_clip": plan.source_path,
         "original_pass_by": {
-            "v1_mps": plan.source_speed_mps,
+            ("v1_kmph" if config.speed_unit == "kmph" else "v1_mps"): mps_to_display(
+                plan.source_speed_mps, config.speed_unit
+            ),
             "h1_m": plan.h1_m,
             "t_cpa1_s": plan.t_cpa1_s,
         },
         "render_pass_by": {
-            "v2_mps": plan.speed_mps,
+            ("v2_kmph" if config.speed_unit == "kmph" else "v2_mps"): _display_speed(plan, config),
             "h2_m": plan.cpa_distance_m,
             "t_cpa2_s": plan.cpa_time_sec,
             "vehicle_length_m": plan.vehicle_length_m,
@@ -268,5 +338,12 @@ def export_sample_artifacts(
         "wav_path": wav_name,
         "labels": labels,
         "spectrogram_exports": exported,
-        "combined_spectrogram": "spectrograms/combined.png" if exported else None,
+        "combined_spectrogram": (
+            "spectrograms/combined.png"
+            if config.generate_combined_png
+            and exported
+            and config.spectrogram_png_types
+            and any(k in config.spectrogram_png_types for k in exported)
+            else None
+        ),
     }

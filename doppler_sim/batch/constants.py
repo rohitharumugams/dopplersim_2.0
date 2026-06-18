@@ -6,6 +6,7 @@ from pathlib import Path
 
 PATH_TYPE_STRAIGHT = "straight"
 SAMPLE_ID_WIDTH = 7
+KMH_PER_MPS = 3.6
 HOP_LENGTH = 512
 FEATURE_SR = 44100
 N_FFT_STFT = 2048
@@ -30,13 +31,51 @@ CSV_HEADERS = [
 ]
 
 
+def mps_to_display(speed_mps: float, unit: str) -> float:
+    if unit == "kmph":
+        return round(speed_mps * KMH_PER_MPS, 1)
+    return round(float(speed_mps), 1)
+
+
+def display_to_mps(speed: float, unit: str) -> float:
+    if unit == "kmph":
+        return float(speed) / KMH_PER_MPS
+    return float(speed)
+
+
+def csv_speed_field_names(unit: str) -> tuple[str, str]:
+    if unit == "kmph":
+        return "source_speed_kmph", "speed_kmph"
+    return "source_speed_mps", "speed_mps"
+
+
+def csv_headers(unit: str = "mps") -> list[str]:
+    source_key, speed_key = csv_speed_field_names(unit)
+    return [
+        "sample_id",
+        "batch_id",
+        "filename",
+        "vehicle_class",
+        "trajectory_type",
+        source_key,
+        speed_key,
+        "cpa_distance_m",
+        "cpa_time_sec",
+        "vehicle_length_m",
+        "num_emitters",
+        "pass_by_in_clip",
+    ]
+
+
 def sample_dir_name(index: int) -> str:
     return f"sample_{index:0{SAMPLE_ID_WIDTH}d}"
 
 
-def output_wav_name(vehicle: str, speed_mps: float) -> str:
-    speed_label = int(speed_mps) if speed_mps == int(speed_mps) else speed_mps
-    return f"{vehicle}_{speed_label}mps.wav"
+def output_wav_name(vehicle: str, speed_mps: float, *, unit: str = "mps") -> str:
+    speed_display = mps_to_display(speed_mps, unit)
+    speed_label = int(speed_display) if speed_display == int(speed_display) else speed_display
+    suffix = "kmh" if unit == "kmph" else "mps"
+    return f"{vehicle}_{speed_label}{suffix}.wav"
 
 
 DEFAULT_BATCH_OUTPUT_DIR = "static/batch_outputs"

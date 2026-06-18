@@ -906,15 +906,31 @@ DEFAULT_BATCH_SPEC_KEYS = [item.key for item in SPECG_TYPE_REGISTRY if item.defa
 SPECG_TYPE_CHOICES = [(item.key, item.label, item.default_enabled) for item in SPECG_TYPE_REGISTRY]
 
 
+def _form_checkbox_on(form, name: str) -> bool:
+    return form.get(name) in ("on", "1", "true", "yes")
+
+
 def parse_batch_spec_types(form, fallback: List[str] | None = None) -> List[str]:
     selected = [
         item.key
         for item in SPECG_TYPE_REGISTRY
-        if form.get(f"spec_{item.key}") in ("on", "1", "true", "yes")
+        if _form_checkbox_on(form, f"spec_{item.key}")
     ]
     if selected:
         return selected
     return list(fallback or DEFAULT_BATCH_SPEC_KEYS)
+
+
+def parse_batch_spec_png_types(form, fallback: List[str] | None = None) -> List[str]:
+    """Spectrogram types for which PNG panel images should be exported."""
+    selected = [
+        item.key
+        for item in SPECG_TYPE_REGISTRY
+        if _form_checkbox_on(form, f"spec_png_{item.key}")
+    ]
+    if selected:
+        return selected
+    return list(fallback or [])
 
 
 def prepare_batch_spec_audio(y: np.ndarray, sr: int) -> tuple[np.ndarray, int]:
@@ -1066,28 +1082,29 @@ def export_batch_spectrograms(
     analysis: SpecgAnalysisParams,
     selected_keys: List[str],
     spec_dir: Path,
-    meta_dir: Path,
     *,
     sample_title: str | None = None,
+    png_keys: List[str] | None = None,
+    generate_combined: bool = False,
 ) -> List[str]:
-    """Export PNG + NPY for selected spectrogram types using Explorer pipeline."""
+    """Export NPY (and optionally PNG) for selected spectrogram types using Explorer pipeline."""
     spec_dir.mkdir(parents=True, exist_ok=True)
-    meta_dir.mkdir(parents=True, exist_ok=True)
+    png_set = set(png_keys or [])
     exported: List[str] = []
     combined_panels: List[Tuple[str, Dict[str, Any]]] = []
     for key in selected_keys:
         item = SPECG_TYPE_BY_KEY.get(key)
         if item is None:
             continue
-        panel = item.build_panel(y, sr, fmax_hz, analysis)
-        png_path = spec_dir / f"{key}.png"
-        save_batch_spec_panel_png(panel, png_path)
         tensor = item.build_tensor(y, sr, fmax_hz, analysis)
-        np.save(meta_dir / f"{key}.npy", tensor)
+        np.save(spec_dir / f"{key}.npy", tensor)
         exported.append(key)
-        combined_panels.append((item.label, panel))
+        if key in png_set:
+            panel = item.build_panel(y, sr, fmax_hz, analysis)
+            save_batch_spec_panel_png(panel, spec_dir / f"{key}.png")
+            combined_panels.append((item.label, panel))
 
-    if combined_panels and sample_title:
+    if generate_combined and combined_panels and sample_title:
         save_batch_combined_spectrogram(
             combined_panels,
             sample_title,

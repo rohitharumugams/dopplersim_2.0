@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -12,6 +13,10 @@ from doppler_sim.batch.catalog import SourceClip, VehicleCatalog
 from doppler_sim.batch.constants import DEFAULT_BATCH_OUTPUT_DIR, DEFAULT_BATCH_INPUT_DIR, PATH_TYPE_STRAIGHT, to_project_relative
 from doppler_sim.batch.sampler import SamplerBank, distribute_even_counts, evenly_spaced_speeds
 from doppler_sim.specg.explorer import DEFAULT_BATCH_SPEC_KEYS, SPECG_DEFAULT_FMAX_HZ
+
+
+def default_batch_workers() -> int:
+    return max(1, (os.cpu_count() or 4) - 1)
 
 
 @dataclass
@@ -39,6 +44,11 @@ class BatchConfig:
     t_out_s: float = 10.0
     seed: int = 42
     spectrogram_types: list[str] = field(default_factory=lambda: list(DEFAULT_BATCH_SPEC_KEYS))
+    spectrogram_png_types: list[str] = field(default_factory=list)
+    generate_combined_png: bool = False
+    simple_generate: bool = False
+    speed_unit: str = "mps"
+    num_workers: int = field(default_factory=default_batch_workers)
     specg_fmax_hz: float = SPECG_DEFAULT_FMAX_HZ
     output_dir: str = DEFAULT_BATCH_OUTPUT_DIR
     input_dir: str = DEFAULT_BATCH_INPUT_DIR
@@ -49,6 +59,41 @@ class BatchConfig:
             "selections": [asdict(s) for s in self.selections],
             "path_type": PATH_TYPE_STRAIGHT,
         }
+
+
+def batch_config_from_dict(
+    cfg: dict[str, Any],
+    *,
+    legacy_generate_spec_png: bool = False,
+) -> BatchConfig:
+    data = dict(cfg)
+    selections = [VehicleSelection(**s) for s in data.pop("selections")]
+    data.pop("path_type", None)
+    spectrogram_types = data.pop("spectrogram_types", None)
+    spectrogram_png_types = data.pop("spectrogram_png_types", None)
+    vehicle_lengths = data.pop("vehicle_lengths", None)
+    generate_spec_png = data.pop("generate_spec_png", None)
+    simple_generate = data.pop("simple_generate", False)
+    speed_unit = data.pop("speed_unit", "mps")
+    num_workers = max(1, int(data.pop("num_workers", default_batch_workers())))
+    config = BatchConfig(
+        selections=selections,
+        num_workers=num_workers,
+        **data,
+    )
+    if spectrogram_types is not None:
+        config.spectrogram_types = spectrogram_types
+    if spectrogram_png_types is not None:
+        config.spectrogram_png_types = list(spectrogram_png_types)
+    elif generate_spec_png or legacy_generate_spec_png:
+        config.spectrogram_png_types = list(
+            spectrogram_types if spectrogram_types is not None else config.spectrogram_types
+        )
+    if vehicle_lengths is not None:
+        config.vehicle_lengths = vehicle_lengths
+    config.simple_generate = bool(simple_generate)
+    config.speed_unit = "kmph" if speed_unit == "kmph" else "mps"
+    return config
 
 
 @dataclass
@@ -86,16 +131,7 @@ class BatchPlan:
     @classmethod
     def load(cls, path: Path) -> "BatchPlan":
         data = json.loads(path.read_text(encoding="utf-8"))
-        cfg = data["config"]
-        selections = [VehicleSelection(**s) for s in cfg.pop("selections")]
-        cfg.pop("path_type", None)
-        spectrogram_types = cfg.pop("spectrogram_types", None)
-        vehicle_lengths = cfg.pop("vehicle_lengths", None)
-        config = BatchConfig(selections=selections, **cfg)
-        if spectrogram_types is not None:
-            config.spectrogram_types = spectrogram_types
-        if vehicle_lengths is not None:
-            config.vehicle_lengths = vehicle_lengths
+        config = batch_config_from_dict(data["config"], legacy_generate_spec_png=True)
         samples = [PlannedSample(**row) for row in data["samples"]]
         return cls(config=config, samples=samples)
 
