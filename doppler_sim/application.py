@@ -96,6 +96,28 @@ class RenderParams:
     t_out: float
 
 
+@dataclass(frozen=True)
+class PassByTab:
+    active_tab: str
+    upload_id_key: str
+    upload_filename_key: str
+    last_render_id_key: str
+
+
+PASS_BY_DOPPLER = PassByTab(
+    active_tab="doppler",
+    upload_id_key="upload_id",
+    upload_filename_key="upload_filename",
+    last_render_id_key="last_render_id",
+)
+PASS_BY_MULTISOURCE = PassByTab(
+    active_tab="multisource_pass_by",
+    upload_id_key="ms_upload_id",
+    upload_filename_key="ms_upload_filename",
+    last_render_id_key="ms_last_render_id",
+)
+
+
 def emitter_offsets(length: float, num_emitters: int) -> np.ndarray:
     if num_emitters <= 1:
         return np.array([0.0])
@@ -852,6 +874,102 @@ def generate_all_plots(
     return plots
 
 
+MULTISOURCE_PLOT_EXPORT_NAMES = {
+    "uploaded_waveform": "01_uploaded_waveform.png",
+    "uploaded_spectrogram": "02_uploaded_spectrogram.png",
+    "generated_waveform": "03_generated_waveform.png",
+    "generated_spectrogram": "04_generated_spectrogram.png",
+    "source_catalog": "05_source_catalog.png",
+    "component_waveforms": "06_component_waveforms.png",
+    "uploaded_reassigned": "07_uploaded_reassigned.png",
+    "generated_reassigned": "08_generated_reassigned.png",
+}
+
+
+def generate_multisource_all_plots(
+    uploaded_audio: np.ndarray,
+    uploaded_sr: int,
+    generated_audio: np.ndarray,
+    params: RenderParams,
+    component_tracks: dict[str, np.ndarray],
+    plot_dir: Path,
+    freq_max: float = DEFAULT_FREQ_MAX,
+    include_reassigned: bool = False,
+) -> dict[str, str]:
+    from doppler_sim.multisource.plots import plot_component_waveforms, plot_source_catalog_layout
+
+    out_sr = OUTPUT_SR
+    plots = {
+        "uploaded_waveform": plot_waveform(
+            uploaded_audio,
+            uploaded_sr,
+            "Uploaded Waveform",
+            MULTISOURCE_PLOT_EXPORT_NAMES["uploaded_waveform"],
+            plot_dir,
+            color="#475569",
+        ),
+        "uploaded_spectrogram": plot_spectrogram(
+            uploaded_audio,
+            uploaded_sr,
+            "Uploaded Spectrogram",
+            MULTISOURCE_PLOT_EXPORT_NAMES["uploaded_spectrogram"],
+            plot_dir,
+            freq_max=freq_max,
+        ),
+        "generated_waveform": plot_waveform(
+            generated_audio,
+            out_sr,
+            "Generated Waveform (5.0 multi-source)",
+            MULTISOURCE_PLOT_EXPORT_NAMES["generated_waveform"],
+            plot_dir,
+            color="#2563eb",
+        ),
+        "generated_spectrogram": plot_spectrogram(
+            generated_audio,
+            out_sr,
+            "Generated Spectrogram (5.0 multi-source)",
+            MULTISOURCE_PLOT_EXPORT_NAMES["generated_spectrogram"],
+            plot_dir,
+            freq_max=freq_max,
+        ),
+        "source_catalog": plot_source_catalog_layout(
+            params.vehicle_length,
+            MULTISOURCE_PLOT_EXPORT_NAMES["source_catalog"],
+            plot_dir,
+        ),
+        "component_waveforms": plot_component_waveforms(
+            component_tracks,
+            out_sr,
+            MULTISOURCE_PLOT_EXPORT_NAMES["component_waveforms"],
+            plot_dir,
+        ),
+    }
+    if include_reassigned:
+        plots["uploaded_reassigned"] = plot_reassigned_passby(
+            uploaded_audio,
+            uploaded_sr,
+            "Uploaded Reassigned Spectrogram",
+            MULTISOURCE_PLOT_EXPORT_NAMES["uploaded_reassigned"],
+            plot_dir,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            freq_max=freq_max,
+            t_cpa=params.t_cpa1,
+        )
+        plots["generated_reassigned"] = plot_reassigned_passby(
+            generated_audio,
+            out_sr,
+            "Generated Reassigned Spectrogram",
+            MULTISOURCE_PLOT_EXPORT_NAMES["generated_reassigned"],
+            plot_dir,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            freq_max=freq_max,
+            t_cpa=params.t_cpa2,
+        )
+    return plots
+
+
 def sanitize_bundle_name(name: str) -> str:
     cleaned = re.sub(r"[^\w\-. ]", "", name.strip())
     cleaned = cleaned.replace(" ", "_").strip("._")
@@ -879,9 +997,24 @@ def parse_optional_t_cpa() -> float | None:
     return value if np.isfinite(value) else None
 
 
+def pass_by_tab_urls(tab: PassByTab) -> dict[str, str]:
+    if tab.active_tab == PASS_BY_MULTISOURCE.active_tab:
+        return {
+            "generate": url_for("multisource_pass_by_generate"),
+            "update_freq_max": url_for("multisource_pass_by_update_freq_max"),
+            "download_bundle": url_for("multisource_pass_by_download_bundle"),
+        }
+    return {
+        "generate": url_for("generate"),
+        "update_freq_max": url_for("update_freq_max"),
+        "download_bundle": url_for("download_bundle"),
+    }
+
+
 def save_render_state(
     render_id: str,
     *,
+    tab: PassByTab,
     output_name: str,
     upload_filename: str | None,
     speed_unit: str,
@@ -891,34 +1024,47 @@ def save_render_state(
     uploaded_audio: np.ndarray,
     uploaded_sr: int,
     generated_audio: np.ndarray,
-    freqs: np.ndarray,
-    psd_observed: np.ndarray,
-    psd_inverted: np.ndarray,
-    stft: np.ndarray,
-    stft_times: np.ndarray,
-    quantities: dict[str, np.ndarray],
+    freqs: np.ndarray | None = None,
+    psd_observed: np.ndarray | None = None,
+    psd_inverted: np.ndarray | None = None,
+    stft: np.ndarray | None = None,
+    stft_times: np.ndarray | None = None,
+    quantities: dict[str, np.ndarray] | None = None,
     include_reassigned: bool = False,
+    pipeline: str = "doppler_2",
+    multisource_meta: dict[str, Any] | None = None,
+    component_tracks: dict[str, np.ndarray] | None = None,
 ) -> None:
     render_dir = RENDERS_DIR / render_id
     render_dir.mkdir(parents=True, exist_ok=True)
 
-    np.savez_compressed(
-        render_dir / "data.npz",
-        uploaded_audio=uploaded_audio,
-        uploaded_sr=np.array([uploaded_sr]),
-        generated_audio=generated_audio,
-        freqs=freqs,
-        psd_observed=psd_observed,
-        psd_inverted=psd_inverted,
-        stft=stft,
-        stft_times=stft_times,
-        t_r=quantities["t_r"],
-        v_r=quantities["v_r"],
-        alpha=quantities["alpha"],
-        R=quantities["R"],
-    )
+    payload: dict[str, Any] = {
+        "uploaded_audio": uploaded_audio,
+        "uploaded_sr": np.array([uploaded_sr]),
+        "generated_audio": generated_audio,
+    }
+    if freqs is not None:
+        payload["freqs"] = freqs
+    if psd_observed is not None:
+        payload["psd_observed"] = psd_observed
+    if psd_inverted is not None:
+        payload["psd_inverted"] = psd_inverted
+    if stft is not None:
+        payload["stft"] = stft
+    if stft_times is not None:
+        payload["stft_times"] = stft_times
+    if quantities is not None:
+        payload["t_r"] = quantities["t_r"]
+        payload["v_r"] = quantities["v_r"]
+        payload["alpha"] = quantities["alpha"]
+        payload["R"] = quantities["R"]
+    if component_tracks is not None:
+        for key, track in component_tracks.items():
+            if key != "combined" and isinstance(track, np.ndarray):
+                payload[f"track_{key}"] = track
+    np.savez_compressed(render_dir / "data.npz", **payload)
 
-    meta = {
+    meta: dict[str, Any] = {
         "output_name": output_name,
         "upload_filename": upload_filename,
         "speed_unit": speed_unit,
@@ -926,9 +1072,12 @@ def save_render_state(
         "params": asdict(params),
         "plots": plots,
         "include_reassigned": include_reassigned,
+        "pipeline": pipeline,
     }
+    if multisource_meta is not None:
+        meta["multisource_meta"] = multisource_meta
     (render_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    session["last_render_id"] = render_id
+    session[tab.last_render_id_key] = render_id
 
 
 def load_render_state(render_id: str) -> tuple[dict, dict[str, np.ndarray]]:
@@ -937,12 +1086,13 @@ def load_render_state(render_id: str) -> tuple[dict, dict[str, np.ndarray]]:
     data = np.load(render_dir / "data.npz")
     arrays = {key: data[key] for key in data.files}
     arrays["uploaded_sr"] = int(arrays["uploaded_sr"][0])
-    arrays["quantities"] = {
-        "t_r": arrays.pop("t_r"),
-        "v_r": arrays.pop("v_r"),
-        "alpha": arrays.pop("alpha"),
-        "R": arrays.pop("R"),
-    }
+    if "t_r" in arrays:
+        arrays["quantities"] = {
+            "t_r": arrays.pop("t_r"),
+            "v_r": arrays.pop("v_r"),
+            "alpha": arrays.pop("alpha"),
+            "R": arrays.pop("R"),
+        }
     return meta, arrays
 
 
@@ -961,23 +1111,30 @@ def build_success_context(
     params: RenderParams,
     speed_unit: str,
     upload_filename: str | None,
+    *,
+    tab: PassByTab,
 ) -> dict:
     output_name = meta["output_name"]
     freq_max = float(meta["freq_max"])
-    return {
+    ctx = {
         "success": True,
         "render_id": render_id,
         "audio_url": url_for("generated_file", filename=output_name),
         "freq_max": freq_max,
         "include_reassigned": bool(meta.get("include_reassigned", False)),
         "plots": plot_urls_for_render(render_id, plots, freq_max),
+        "multisource_pipeline": meta.get("pipeline") == "multisource_5dot0",
         **form_context(
             params,
             speed_unit,
             upload_filename=upload_filename,
             freq_max=freq_max,
+            tab=tab,
         ),
     }
+    if meta.get("multisource_meta"):
+        ctx["multisource_meta"] = meta["multisource_meta"]
+    return ctx
 
 
 def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, RenderParams, dict[str, str]]:
@@ -986,21 +1143,38 @@ def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, 
     plot_dir = PLOTS_DIR / render_id
     include_reassigned = bool(meta.get("include_reassigned", False))
 
-    plots = generate_all_plots(
-        arrays["uploaded_audio"],
-        arrays["uploaded_sr"],
-        arrays["generated_audio"],
-        arrays["freqs"],
-        arrays["psd_observed"],
-        arrays["psd_inverted"],
-        arrays["stft"],
-        arrays["stft_times"],
-        params,
-        arrays["quantities"],
-        plot_dir,
-        freq_max=freq_max,
-        include_reassigned=include_reassigned,
-    )
+    if meta.get("pipeline") == "multisource_5dot0":
+        component_tracks = {
+            key.removeprefix("track_"): arrays[key]
+            for key in arrays
+            if key.startswith("track_")
+        }
+        plots = generate_multisource_all_plots(
+            arrays["uploaded_audio"],
+            arrays["uploaded_sr"],
+            arrays["generated_audio"],
+            params,
+            component_tracks,
+            plot_dir,
+            freq_max=freq_max,
+            include_reassigned=include_reassigned,
+        )
+    else:
+        plots = generate_all_plots(
+            arrays["uploaded_audio"],
+            arrays["uploaded_sr"],
+            arrays["generated_audio"],
+            arrays["freqs"],
+            arrays["psd_observed"],
+            arrays["psd_inverted"],
+            arrays["stft"],
+            arrays["stft_times"],
+            params,
+            arrays["quantities"],
+            plot_dir,
+            freq_max=freq_max,
+            include_reassigned=include_reassigned,
+        )
 
     meta["freq_max"] = freq_max
     meta["plots"] = plots
@@ -1058,10 +1232,14 @@ def form_context(
     params: RenderParams | None = None,
     speed_unit: str = "mps",
     freq_max: float = DEFAULT_FREQ_MAX,
+    *,
+    tab: PassByTab = PASS_BY_DOPPLER,
     **extra,
 ) -> dict:
     ctx = {
-        **upload_context(),
+        **upload_context(tab),
+        "active_tab": tab.active_tab,
+        "pass_by_urls": pass_by_tab_urls(tab),
         "speed_unit": speed_unit,
         "freq_max": freq_max,
         "v1_display": from_mps(params.v1, speed_unit) if params else (72.0 if speed_unit == "kmph" else 20.0),
@@ -1073,9 +1251,9 @@ def form_context(
     return ctx
 
 
-def upload_context() -> dict:
-    upload_id = session.get("upload_id")
-    upload_filename = session.get("upload_filename")
+def upload_context(tab: PassByTab) -> dict:
+    upload_id = session.get(tab.upload_id_key)
+    upload_filename = session.get(tab.upload_filename_key)
     has_upload = bool(upload_id and (UPLOAD_DIR / f"{upload_id}.wav").exists())
     return {
         "has_upload": has_upload,
@@ -1083,27 +1261,27 @@ def upload_context() -> dict:
     }
 
 
-def resolve_upload_path() -> tuple[Path | None, str | None, str | None]:
+def resolve_upload_path(tab: PassByTab) -> tuple[Path | None, str | None, str | None]:
     uploaded = request.files.get("audio_file")
     if uploaded is not None and uploaded.filename:
         upload_id = uuid.uuid4().hex
         upload_path = UPLOAD_DIR / f"{upload_id}.wav"
         uploaded.save(upload_path)
-        session["upload_id"] = upload_id
-        session["upload_filename"] = uploaded.filename
+        session[tab.upload_id_key] = upload_id
+        session[tab.upload_filename_key] = uploaded.filename
         return upload_path, uploaded.filename, None
 
-    upload_id = session.get("upload_id")
+    upload_id = session.get(tab.upload_id_key)
     if not upload_id:
         return None, None, "Please upload a WAV file."
 
     upload_path = UPLOAD_DIR / f"{upload_id}.wav"
     if not upload_path.exists():
-        session.pop("upload_id", None)
-        session.pop("upload_filename", None)
+        session.pop(tab.upload_id_key, None)
+        session.pop(tab.upload_filename_key, None)
         return None, None, "Your previous upload expired. Please upload a WAV file again."
 
-    return upload_path, session.get("upload_filename"), None
+    return upload_path, session.get(tab.upload_filename_key), None
 
 
 @app.route("/health")
@@ -1113,20 +1291,22 @@ def health():
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", **form_context())
+    return render_template("index.html", **form_context(tab=PASS_BY_DOPPLER))
 
 
-@app.route("/generate", methods=["POST"])
-def generate():
+def _handle_pass_by_generate(tab: PassByTab):
+    if tab.active_tab == PASS_BY_MULTISOURCE.active_tab:
+        return _handle_multisource_pass_by_generate(tab)
+
     params, speed_unit = parse_params()
     freq_max = parse_freq_max()
     include_reassigned = parse_include_reassigned()
-    upload_path, upload_filename, upload_error = resolve_upload_path()
+    upload_path, upload_filename, upload_error = resolve_upload_path(tab)
     if upload_error:
         return render_template(
             "index.html",
             error=upload_error,
-            **form_context(params, speed_unit, freq_max=freq_max),
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
     try:
@@ -1135,14 +1315,14 @@ def generate():
         return render_template(
             "index.html",
             error=f"Failed to load audio: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max),
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
     if audio.size == 0:
         return render_template(
             "index.html",
             error="Uploaded file is empty.",
-            **form_context(params, speed_unit, freq_max=freq_max),
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
     uploaded_plot_copy = audio.copy()
@@ -1188,6 +1368,7 @@ def generate():
 
         save_render_state(
             render_id,
+            tab=tab,
             output_name=output_name,
             upload_filename=upload_filename,
             speed_unit=speed_unit,
@@ -1209,7 +1390,7 @@ def generate():
         return render_template(
             "index.html",
             error=f"Generation failed: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max),
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
     meta = {
@@ -1219,18 +1400,145 @@ def generate():
     }
     return render_template(
         "index.html",
-        **build_success_context(render_id, meta, plots, params, speed_unit, upload_filename),
+        **build_success_context(
+            render_id,
+            meta,
+            plots,
+            params,
+            speed_unit,
+            upload_filename,
+            tab=tab,
+        ),
     )
 
 
-@app.route("/update-freq-max", methods=["POST"])
-def update_freq_max():
-    render_id = session.get("last_render_id")
+def _handle_multisource_pass_by_generate(tab: PassByTab):
+    from doppler_sim.multisource.synthesis import synthesize_multisource_passby
+
+    params, speed_unit = parse_params()
+    freq_max = parse_freq_max()
+    include_reassigned = parse_include_reassigned()
+    upload_path, upload_filename, upload_error = resolve_upload_path(tab)
+    if upload_error:
+        return render_template(
+            "index.html",
+            error=upload_error,
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    try:
+        audio, sr = librosa.load(upload_path, sr=None, mono=True)
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Failed to load audio: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    if audio.size == 0:
+        return render_template(
+            "index.html",
+            error="Uploaded file is empty.",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    uploaded_plot_copy = audio.copy()
+    uploaded_sr = sr
+
+    try:
+        generated, component_tracks, ms_meta = synthesize_multisource_passby(
+            uploaded_plot_copy,
+            uploaded_sr,
+            params,
+        )
+
+        output_name = f"{uuid.uuid4().hex}.wav"
+        output_path = GENERATED_DIR / output_name
+        sf.write(output_path, generated, OUTPUT_SR, subtype="PCM_16")
+
+        render_id = uuid.uuid4().hex
+        plot_dir = PLOTS_DIR / render_id
+        plots = generate_multisource_all_plots(
+            uploaded_plot_copy,
+            uploaded_sr,
+            generated,
+            params,
+            component_tracks,
+            plot_dir,
+            freq_max=freq_max,
+            include_reassigned=include_reassigned,
+        )
+
+        save_render_state(
+            render_id,
+            tab=tab,
+            output_name=output_name,
+            upload_filename=upload_filename,
+            speed_unit=speed_unit,
+            freq_max=freq_max,
+            params=params,
+            plots=plots,
+            uploaded_audio=uploaded_plot_copy,
+            uploaded_sr=uploaded_sr,
+            generated_audio=generated,
+            include_reassigned=include_reassigned,
+            pipeline="multisource_5dot0",
+            multisource_meta=ms_meta,
+            component_tracks=component_tracks,
+        )
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+        return render_template(
+            "index.html",
+            error=f"Multisource generation failed: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    meta = {
+        "output_name": output_name,
+        "freq_max": freq_max,
+        "include_reassigned": include_reassigned,
+        "pipeline": "multisource_5dot0",
+        "multisource_meta": ms_meta,
+    }
+    return render_template(
+        "index.html",
+        **build_success_context(
+            render_id,
+            meta,
+            plots,
+            params,
+            speed_unit,
+            upload_filename,
+            tab=tab,
+        ),
+    )
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    return _handle_pass_by_generate(PASS_BY_DOPPLER)
+
+
+@app.route("/multisource-pass-by", methods=["GET"])
+def multisource_pass_by():
+    return render_template("index.html", **form_context(tab=PASS_BY_MULTISOURCE))
+
+
+@app.route("/multisource-pass-by/generate", methods=["POST"])
+def multisource_pass_by_generate():
+    return _handle_pass_by_generate(PASS_BY_MULTISOURCE)
+
+
+def _handle_pass_by_update_freq_max(tab: PassByTab):
+    render_id = session.get(tab.last_render_id_key)
     if not render_id or not (RENDERS_DIR / render_id / "meta.json").exists():
         return render_template(
             "index.html",
             error="No recent render found. Generate pass-by audio first.",
-            **form_context(freq_max=parse_freq_max()),
+            **form_context(freq_max=parse_freq_max(), tab=tab),
         )
 
     meta, arrays = load_render_state(render_id)
@@ -1247,24 +1555,39 @@ def update_freq_max():
             params,
             speed_unit,
             meta.get("upload_filename"),
+            tab=tab,
         ),
     )
 
 
-@app.route("/download-bundle", methods=["POST"])
-def download_bundle():
-    render_id = session.get("last_render_id")
+@app.route("/update-freq-max", methods=["POST"])
+def update_freq_max():
+    return _handle_pass_by_update_freq_max(PASS_BY_DOPPLER)
+
+
+@app.route("/multisource-pass-by/update-freq-max", methods=["POST"])
+def multisource_pass_by_update_freq_max():
+    return _handle_pass_by_update_freq_max(PASS_BY_MULTISOURCE)
+
+
+def _handle_pass_by_download_bundle(tab: PassByTab):
+    render_id = session.get(tab.last_render_id_key)
     if not render_id or not (RENDERS_DIR / render_id / "meta.json").exists():
         return render_template(
             "index.html",
             error="No recent render found. Generate pass-by audio first.",
-            **form_context(),
+            **form_context(tab=tab),
         )
 
     meta, _ = load_render_state(render_id)
     bundle_name = sanitize_bundle_name(request.form.get("bundle_name", "doppler_sim_export"))
     plot_dir = PLOTS_DIR / render_id
     audio_path = GENERATED_DIR / meta["output_name"]
+    export_names = (
+        MULTISOURCE_PLOT_EXPORT_NAMES
+        if meta.get("pipeline") == "multisource_5dot0"
+        else PLOT_EXPORT_NAMES
+    )
 
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -1272,7 +1595,7 @@ def download_bundle():
         for plot_key, plot_filename in meta["plots"].items():
             plot_path = plot_dir / plot_filename
             if plot_path.exists():
-                export_name = PLOT_EXPORT_NAMES.get(plot_key, plot_filename)
+                export_name = export_names.get(plot_key, plot_filename)
                 archive.write(plot_path, arcname=f"{bundle_name}/{export_name}")
 
     buffer.seek(0)
@@ -1282,6 +1605,16 @@ def download_bundle():
         as_attachment=True,
         download_name=f"{bundle_name}.zip",
     )
+
+
+@app.route("/download-bundle", methods=["POST"])
+def download_bundle():
+    return _handle_pass_by_download_bundle(PASS_BY_DOPPLER)
+
+
+@app.route("/multisource-pass-by/download-bundle", methods=["POST"])
+def multisource_pass_by_download_bundle():
+    return _handle_pass_by_download_bundle(PASS_BY_MULTISOURCE)
 
 
 @app.route("/media/plots/<render_id>/<path:filename>")

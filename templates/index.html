@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% elif active_tab == 'batch' %}Batch Generation{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
+  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% elif active_tab == 'batch' %}Batch Generation{% elif active_tab == 'multisource_pass_by' %}Multisource Pass-By{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -700,7 +700,7 @@
       box-shadow: 0 0 0 1px #f8514966;
     }
   </style>
-  {% if active_tab|default('doppler') == 'doppler' %}<script src="https://cdn.tailwindcss.com"></script>{% endif %}
+  {% if active_tab in ['doppler', 'multisource_pass_by'] %}<script src="https://cdn.tailwindcss.com"></script>{% endif %}
 </head>
 <body class="{% if active_tab in ['spectrograms', 'compare', 'experimental', 'batch'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
   <nav class="app-tabs">
@@ -711,8 +711,12 @@
       >Batch Generation</a>
       <a
         href="{{ url_for('index') }}"
-        class="app-tab {% if active_tab|default('doppler') == 'doppler' %}app-tab-active{% endif %}"
+        class="app-tab {% if active_tab == 'doppler' %}app-tab-active{% endif %}"
       >Pass-By Sim</a>
+      <a
+        href="{{ url_for('multisource_pass_by') }}"
+        class="app-tab {% if active_tab == 'multisource_pass_by' %}app-tab-active{% endif %}"
+      >Multisource Pass-By</a>
       <a
         href="{{ url_for('spectrograms') }}"
         class="app-tab {% if active_tab == 'spectrograms' %}app-tab-active{% endif %}"
@@ -728,15 +732,23 @@
     </div>
   </nav>
 
-  {% if active_tab|default('doppler') == 'doppler' %}
+  {% if active_tab in ['doppler', 'multisource_pass_by'] %}
   <div class="max-w-6xl mx-auto px-4 py-10">
     <header class="mb-10">
-      <h1 class="text-3xl font-bold tracking-tight text-white">DopplerSim 2.0</h1>
+      <h1 class="text-3xl font-bold tracking-tight text-white">
+        {% if active_tab == 'multisource_pass_by' %}Multisource Pass-By (5.0){% else %}DopplerSim 2.0{% endif %}
+      </h1>
       <p class="mt-2 text-slate-400 max-w-3xl">
+        {% if active_tab == 'multisource_pass_by' %}
+        <strong class="text-slate-300">14-source catalog</strong> from Doppler 5.0 (engine, intake, exhaust, 4 tyres, 5 body patches, 2 aero patches).
+        Per-source q(t′) is extracted from the upload, propagated at the render geometry, then combined with
+        partial-coherence tonal clustering and incoherent broadband √(Σp²) rules.
+        {% else %}
         Physics-informed vehicle pass-by synthesis. The uploaded recording is analyzed using
         the <strong class="text-slate-300">original pass-by parameters</strong> (v₁, h₁, t_CPA₁)
         to invert Doppler and geometric attenuation and estimate an intrinsic source spectrum.
         A new stochastic realization is then rendered under your chosen geometry via exact retarded time.
+        {% endif %}
       </p>
     </header>
 
@@ -746,7 +758,7 @@
     </div>
     {% endif %}
 
-    <form action="{{ url_for('generate') }}" method="post" enctype="multipart/form-data" class="space-y-8">
+    <form action="{{ pass_by_urls.generate }}" method="post" enctype="multipart/form-data" class="space-y-8">
       <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Input Recording</h2>
         {% if has_upload %}
@@ -804,6 +816,17 @@
         </section>
 
         <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+          {% if active_tab == 'multisource_pass_by' %}
+          <h2 class="text-lg font-semibold text-white mb-1">Vehicle length</h2>
+          <p class="text-xs text-slate-500 mb-4">
+            Sets longitudinal spacing of the 5 fixed body patches in the 14-source catalog.
+            Engine, intake, exhaust, tyres, and aero positions are fixed in 5.0 — not configurable here.
+          </p>
+          <div>
+            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="vehicle_length">Length L (m)</label>
+            <input id="vehicle_length" name="vehicle_length" type="number" step="any" value="{{ params.vehicle_length if params else 4.5 }}" class="w-full max-w-xs rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          </div>
+          {% else %}
           <h2 class="text-lg font-semibold text-white mb-4">Vehicle Model</h2>
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -815,6 +838,7 @@
               <input id="num_emitters" name="num_emitters" type="number" min="1" step="1" value="{{ params.num_emitters if params else 3 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
             </div>
           </div>
+          {% endif %}
         </section>
       </div>
 
@@ -880,7 +904,7 @@
         type="submit"
         class="w-full md:w-auto rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition"
       >
-        Generate Pass-By Audio
+        Generate Pass-By Audio{% if active_tab == 'multisource_pass_by' %} (5.0 multi-source){% endif %}
       </button>
     </form>
 
@@ -890,7 +914,7 @@
         <h2 class="text-xl font-semibold text-emerald-300 mb-4">Generated Audio</h2>
         <audio controls class="w-full mb-6" src="{{ audio_url }}"></audio>
 
-        <form action="{{ url_for('update_freq_max') }}" method="post" class="mb-6 rounded-lg border border-slate-700/60 bg-slate-950/40 p-4">
+        <form action="{{ pass_by_urls.update_freq_max }}" method="post" class="mb-6 rounded-lg border border-slate-700/60 bg-slate-950/40 p-4">
           <label class="block text-sm text-slate-300 mb-2" for="result-freq-max">
             Spectrogram Y-axis max: <span id="result-freq-max-value">{{ freq_max | int }}</span> Hz
           </label>
@@ -913,7 +937,7 @@
           <p class="text-xs text-slate-500 mt-2">Re-draws spectrogram images only — physics and audio stay the same.</p>
         </form>
 
-        <form action="{{ url_for('download_bundle') }}" method="post" class="flex flex-col sm:flex-row gap-3 sm:items-end">
+        <form action="{{ pass_by_urls.download_bundle }}" method="post" class="flex flex-col sm:flex-row gap-3 sm:items-end">
           <div class="flex-1">
             <label class="block text-sm text-slate-300 mb-2" for="bundle_name">Export file name</label>
             <input
@@ -936,6 +960,55 @@
 
       <div>
         <h2 class="text-xl font-semibold text-white mb-4">Analysis Plots</h2>
+        {% if multisource_pipeline or active_tab == 'multisource_pass_by' %}
+        <div class="grid md:grid-cols-2 gap-6">
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Uploaded waveform</figcaption>
+            <img src="{{ plots.uploaded_waveform }}" alt="Uploaded waveform" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Uploaded spectrogram</figcaption>
+            <img src="{{ plots.uploaded_spectrogram }}" alt="Uploaded spectrogram" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-slate-400 mb-2">5.0 source catalog (14 emitters)</figcaption>
+            <img src="{{ plots.source_catalog }}" alt="Source catalog layout" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-slate-400 mb-2">Component waveforms (engine, intake, exhaust, tyres, broadband, combined)</figcaption>
+            <img src="{{ plots.component_waveforms }}" alt="Component waveforms" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Generated waveform</figcaption>
+            <img src="{{ plots.generated_waveform }}" alt="Generated waveform" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <figcaption class="text-sm text-slate-400 mb-2">Generated spectrogram</figcaption>
+            <img src="{{ plots.generated_spectrogram }}" alt="Generated spectrogram" class="w-full rounded">
+          </figure>
+          {% if plots.uploaded_reassigned %}
+          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-amber-200/80 mb-2">Uploaded reassigned spectrogram (diagnostic)</figcaption>
+            <img src="{{ plots.uploaded_reassigned }}" alt="Uploaded reassigned spectrogram" class="w-full rounded">
+          </figure>
+          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
+            <figcaption class="text-sm text-amber-200/80 mb-2">Generated reassigned spectrogram (diagnostic)</figcaption>
+            <img src="{{ plots.generated_reassigned }}" alt="Generated reassigned spectrogram" class="w-full rounded">
+          </figure>
+          {% endif %}
+        </div>
+        {% if multisource_meta %}
+        <div class="mt-6 rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-sm text-slate-300">
+          <p class="font-semibold text-white mb-2">5.0 combine &amp; calibration</p>
+          <ul class="list-disc pl-5 space-y-1 text-slate-400">
+            <li>Sources: {{ multisource_meta.source_count.total_catalog }} catalog emitters + LF bed</li>
+            <li>Tonal: {{ multisource_meta.combine.tonal_front }} → {{ multisource_meta.combine.tonal_cluster }}</li>
+            <li>Broadband: {{ multisource_meta.combine.broadband }}</li>
+            <li>Engine / intake / exhaust gains: {{ "%.2f"|format(multisource_meta.calibration.engine_gain) }} / {{ "%.2f"|format(multisource_meta.calibration.intake_gain) }} / {{ "%.2f"|format(multisource_meta.calibration.exhaust_gain) }}</li>
+          </ul>
+        </div>
+        {% endif %}
+        {% else %}
         <div class="grid md:grid-cols-2 gap-6">
           <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
             <figcaption class="text-sm text-slate-400 mb-2">Uploaded waveform</figcaption>
@@ -1004,6 +1077,7 @@
           </figure>
           {% endif %}
         </div>
+        {% endif %}
       </div>
     </section>
     {% endif %}
@@ -2254,7 +2328,7 @@
   </main>
   {% endif %}
 
-  {% if active_tab|default('doppler') == 'doppler' %}
+  {% if active_tab in ['doppler', 'multisource_pass_by'] %}
   <script>
     (function () {
       const KMH_PER_MPS = 3.6;

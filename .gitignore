@@ -40,6 +40,7 @@ instance/
 .webassets-cache
 renders/
 uploads/
+output/
 
 # =============================================================================
 # Static assets (keep folder structure + .gitkeep only)
@@ -94,6 +95,8 @@ benchmarks/test_output/
 /smoke*.py
 /bench*.py
 /prof.py
+/scripts/generate_kiasportage_multisource_comparision_report.py
+/scripts/generate_kiasportage_multisource_report.py
 
 # =============================================================================
 # IDE & editor
