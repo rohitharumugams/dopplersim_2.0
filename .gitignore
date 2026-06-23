@@ -87,6 +87,9 @@ ref_docs/
 # =============================================================================
 images/
 audio/
+# Vendored multisource Python subpackages (not local media)
+!doppler_sim/multisource/vendor/**/audio/
+!doppler_sim/multisource/vendor/**/audio/**
 
 # =============================================================================
 # Benchmarks & local scripts scratch
