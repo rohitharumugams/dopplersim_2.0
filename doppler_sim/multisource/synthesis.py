@@ -28,6 +28,7 @@ from doppler_5dot0.config import (
     NEAR_FIELD_M,
     SAMPLE_RATE,
     SOURCE_HEIGHT_M,
+    TIRE_NEAR_FIELD_M,
 )
 from doppler_5dot0.inverse.synthesis import (
     Vs13MultiCalibration,
@@ -395,7 +396,7 @@ def _precompute_cache_retarget(
                 q_tire,
                 tire_geom,
                 i,
-                near_field_m=BODY_NEAR_FIELD_M,
+                near_field_m=TIRE_NEAR_FIELD_M,
                 include_ground=False,
             )
         )

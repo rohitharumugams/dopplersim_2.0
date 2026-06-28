@@ -33,8 +33,15 @@ AERO_PATCH_COUNT = 2
 
 # Propagation
 NEAR_FIELD_M = 2.0
-BODY_NEAR_FIELD_M = 14.0
+TIRE_NEAR_FIELD_M = 7.0
+BODY_NEAR_FIELD_M = 10.0
 GROUND_REFLECTION_COEFF = 0.22
+
+# Inverse fit: keep broadband clusters from collapsing under tonal-dominated STFT fit
+MIN_BODY_GAIN = 0.52
+MIN_TIRE_GAIN = 0.32
+MIN_AERO_GAIN = 0.28
+MIN_BED_GAIN = 0.22
 
 # Tonal cluster: engine+intake coherent LF, exhaust partial; HF power-blend
 TONAL_LF_COHERENCE = 0.72

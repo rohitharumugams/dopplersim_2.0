@@ -31,10 +31,15 @@ from doppler_5dot0.config import (
     DEFAULT_TEMP_C,
     FRONT_TONAL_CROSSOVER_HZ,
     GROUND_REFLECTION_COEFF,
+    MIN_AERO_GAIN,
+    MIN_BED_GAIN,
+    MIN_BODY_GAIN,
+    MIN_TIRE_GAIN,
     NEAR_FIELD_M,
     OBSERVER_XYZ,
     SAMPLE_RATE,
     SOURCE_HEIGHT_M,
+    TIRE_NEAR_FIELD_M,
     TONAL_CROSSOVER_HZ,
     TONAL_HF_INCOHERENCE,
     TONAL_LF_COHERENCE,
@@ -211,7 +216,7 @@ def _precompute_cache(
         )
         q_tire = np.asarray(q_tire[:n], dtype=np.float64) * float(np.sqrt(tw.gain))
         tires.append(_propagate_q(
-            q_tire, tire_geom, i, near_field_m=BODY_NEAR_FIELD_M, include_ground=False,
+            q_tire, tire_geom, i, near_field_m=TIRE_NEAR_FIELD_M, include_ground=False,
         ))
 
     body_off = _offsets_from_specs(body_specs)
@@ -336,6 +341,13 @@ def _lf_bed_from_real(real: np.ndarray, sr: int, n: int, cpa_time_s: float) -> n
     return (bed / (float(np.max(np.abs(bed))) + 1e-12)).astype(np.float64)
 
 
+def _apply_broadband_gain_floors(cal: Vs13MultiCalibration) -> None:
+    cal.body_gain = max(float(cal.body_gain), MIN_BODY_GAIN)
+    cal.tire_gain = max(float(cal.tire_gain), MIN_TIRE_GAIN)
+    cal.aero_gain = max(float(cal.aero_gain), MIN_AERO_GAIN)
+    cal.bed_gain = max(float(cal.bed_gain), MIN_BED_GAIN)
+
+
 def _match_real_level(
     sim: np.ndarray,
     real: np.ndarray,
@@ -385,7 +397,7 @@ def infer_vs13_calibration(
     n_x = 9
     x0 = np.array([
         np.log(1.0), np.log(0.88), np.log(1.05), np.log(1.0),
-        np.log(0.32), np.log(0.26), np.log(0.22), np.log(0.28), 0.0,
+        np.log(0.38), np.log(0.32), np.log(0.28), np.log(0.32), 0.0,
     ], dtype=np.float64)
 
     y_tgt = np.array([target.get(b, 0.0) for b in band_names])
@@ -420,6 +432,7 @@ def infer_vs13_calibration(
 
     res = least_squares(_res, x0, bounds=(-2.0, 2.5), max_nfev=50, ftol=1e-3)
     cal = _unpack(res.x)
+    _apply_broadband_gain_floors(cal)
     tracks = _component_tracks(cache, cal, sr)
     cal.sim_fwhm_s, _ = envelope_fwhm_s(tracks['combined'], sr)
     cal.fitted_band_shares = band_shares(tracks['combined'], sr, cpa_time_s - 0.5, cpa_time_s + 0.5)

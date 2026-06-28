@@ -68,6 +68,13 @@ SPEED_OF_SOUND = 343.0
 KMH_PER_MPS = 3.6
 DEFAULT_FREQ_MAX = 10000.0
 MAX_FREQ_LIMIT = 22050.0
+MULTISOURCE_DEFAULT_FREQ_MAX = 4000.0
+MULTISOURCE_DEFAULT_SPEED_UNIT = "kmph"
+MULTISOURCE_DEFAULT_V_KMPH = 68.0
+MULTISOURCE_DEFAULT_H_M = 0.5
+MULTISOURCE_DEFAULT_T_CPA_S = 4.96
+MULTISOURCE_DEFAULT_VEHICLE_LENGTH_M = 4.51
+MULTISOURCE_DEFAULT_T_OUT_S = 10.0
 N_FFT = 4096
 HOP_LENGTH = 512
 
@@ -1211,6 +1218,48 @@ def from_mps(speed_mps: float, unit: str) -> float:
     return speed_mps * KMH_PER_MPS if unit == "kmph" else speed_mps
 
 
+def default_multisource_render_params() -> RenderParams:
+    unit = MULTISOURCE_DEFAULT_SPEED_UNIT
+    v_mps = to_mps(MULTISOURCE_DEFAULT_V_KMPH, unit)
+    return RenderParams(
+        v1=v_mps,
+        h1=MULTISOURCE_DEFAULT_H_M,
+        t_cpa1=MULTISOURCE_DEFAULT_T_CPA_S,
+        vehicle_length=MULTISOURCE_DEFAULT_VEHICLE_LENGTH_M,
+        num_emitters=3,
+        v2=v_mps,
+        h2=MULTISOURCE_DEFAULT_H_M,
+        t_cpa2=MULTISOURCE_DEFAULT_T_CPA_S,
+        t_out=MULTISOURCE_DEFAULT_T_OUT_S,
+    )
+
+
+def default_freq_max_for_tab(tab: PassByTab) -> float:
+    if tab.active_tab == PASS_BY_MULTISOURCE.active_tab:
+        return MULTISOURCE_DEFAULT_FREQ_MAX
+    return DEFAULT_FREQ_MAX
+
+
+def parse_multisource_params() -> tuple[RenderParams, str]:
+    speed_unit = parse_speed_unit(MULTISOURCE_DEFAULT_SPEED_UNIT)
+    default_v = (
+        MULTISOURCE_DEFAULT_V_KMPH
+        if speed_unit == "kmph"
+        else to_mps(MULTISOURCE_DEFAULT_V_KMPH, "kmph")
+    )
+    return RenderParams(
+        v1=to_mps(parse_float("v1", default_v), speed_unit),
+        h1=parse_float("h1", MULTISOURCE_DEFAULT_H_M),
+        t_cpa1=parse_float("t_cpa1", MULTISOURCE_DEFAULT_T_CPA_S),
+        vehicle_length=parse_float("vehicle_length", MULTISOURCE_DEFAULT_VEHICLE_LENGTH_M),
+        num_emitters=max(1, parse_int("num_emitters", 3)),
+        v2=to_mps(parse_float("v2", default_v), speed_unit),
+        h2=parse_float("h2", MULTISOURCE_DEFAULT_H_M),
+        t_cpa2=parse_float("t_cpa2", MULTISOURCE_DEFAULT_T_CPA_S),
+        t_out=max(0.5, parse_float("t_out", MULTISOURCE_DEFAULT_T_OUT_S)),
+    ), speed_unit
+
+
 def parse_params() -> tuple[RenderParams, str]:
     speed_unit = parse_speed_unit()
     default_v1 = 72.0 if speed_unit == "kmph" else 20.0
@@ -1230,20 +1279,41 @@ def parse_params() -> tuple[RenderParams, str]:
 
 def form_context(
     params: RenderParams | None = None,
-    speed_unit: str = "mps",
-    freq_max: float = DEFAULT_FREQ_MAX,
+    speed_unit: str | None = None,
+    freq_max: float | None = None,
     *,
     tab: PassByTab = PASS_BY_DOPPLER,
     **extra,
 ) -> dict:
+    is_multisource = tab.active_tab == PASS_BY_MULTISOURCE.active_tab
+    if is_multisource:
+        if params is None:
+            params = default_multisource_render_params()
+        if speed_unit is None:
+            speed_unit = MULTISOURCE_DEFAULT_SPEED_UNIT
+        if freq_max is None:
+            freq_max = MULTISOURCE_DEFAULT_FREQ_MAX
+    else:
+        if speed_unit is None:
+            speed_unit = "mps"
+        if freq_max is None:
+            freq_max = DEFAULT_FREQ_MAX
+
+    if params is not None:
+        v1_display = from_mps(params.v1, speed_unit)
+        v2_display = from_mps(params.v2, speed_unit)
+    else:
+        v1_display = 72.0 if speed_unit == "kmph" else 20.0
+        v2_display = 90.0 if speed_unit == "kmph" else 25.0
+
     ctx = {
         **upload_context(tab),
         "active_tab": tab.active_tab,
         "pass_by_urls": pass_by_tab_urls(tab),
         "speed_unit": speed_unit,
         "freq_max": freq_max,
-        "v1_display": from_mps(params.v1, speed_unit) if params else (72.0 if speed_unit == "kmph" else 20.0),
-        "v2_display": from_mps(params.v2, speed_unit) if params else (90.0 if speed_unit == "kmph" else 25.0),
+        "v1_display": v1_display,
+        "v2_display": v2_display,
     }
     if params is not None:
         ctx["params"] = params
@@ -1415,8 +1485,8 @@ def _handle_pass_by_generate(tab: PassByTab):
 def _handle_multisource_pass_by_generate(tab: PassByTab):
     from doppler_sim.multisource.synthesis import synthesize_multisource_passby
 
-    params, speed_unit = parse_params()
-    freq_max = parse_freq_max()
+    params, speed_unit = parse_multisource_params()
+    freq_max = parse_freq_max(default=MULTISOURCE_DEFAULT_FREQ_MAX)
     include_reassigned = parse_include_reassigned()
     upload_path, upload_filename, upload_error = resolve_upload_path(tab)
     if upload_error:
@@ -1538,11 +1608,11 @@ def _handle_pass_by_update_freq_max(tab: PassByTab):
         return render_template(
             "index.html",
             error="No recent render found. Generate pass-by audio first.",
-            **form_context(freq_max=parse_freq_max(), tab=tab),
+            **form_context(freq_max=parse_freq_max(default=default_freq_max_for_tab(tab)), tab=tab),
         )
 
     meta, arrays = load_render_state(render_id)
-    freq_max = parse_freq_max(default=float(meta.get("freq_max", DEFAULT_FREQ_MAX)))
+    freq_max = parse_freq_max(default=float(meta.get("freq_max", default_freq_max_for_tab(tab))))
     meta, params, plots = regenerate_plots_from_state(render_id, freq_max)
     speed_unit = meta.get("speed_unit", "mps")
 
