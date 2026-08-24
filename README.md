@@ -131,7 +131,7 @@ Set min = max on distance or t_CPA,2 for a fixed value. Total clips should be di
 
 ### Output layout
 
-**Full mode** (`simple generate` off):
+**Full mode** (Phase 1 export checkbox off):
 
 ```
 static/batch_outputs/<batch_name>/
@@ -156,9 +156,9 @@ static/batch_outputs/<batch_name>/
 **Phase 1 learning pair:** `spectrograms/stft.npy` (A) ↔ `metadata/state_frames.npy` (s) via `frame_times.npy`.
 CPA / speed / distance / direction are derived from `s`, not independent physics labels.
 
-**CPA labels:** `cpa_time_sec` / `cpa_distance_m` are **frame-derived** (ML primary). Plan geometry is stored as `cpa_time_plan_sec` / `cpa_distance_plan_m` in `dataset.csv` and `labels.npy`. `direction.npy` is `+1`/`-1` (not the old unused `0` stub). Centerline `s` is not identical to multi-emitter retarded-time synthesis.
+**CPA labels:** `cpa_time_sec` / `cpa_distance_m` are **frame-derived from instantaneous centerline range** (ML primary). Plan geometry is stored as `cpa_time_plan_sec` / `cpa_distance_plan_m` in `dataset.csv` and `labels.npy`. Acoustic loudness peaks near **retarded** min-`R` (≈ `t_CPA₂ + h/c`, tens of ms for typical `h`), not exactly the Phase 1 derived time. `direction.npy` is `+1`/`-1`. Centerline `s` is not identical to multi-emitter retarded-time synthesis.
 
-**Simple mode** (`simple generate` on):
+**Phase 1 export mode** (checkbox on — skips trajectory plot / `kinematics.npy` only):
 
 ```
 audio_clips/sample_0000001/
@@ -191,12 +191,12 @@ Outputs go under `static/` and `renders/`. Each render also writes a **Phase 1 p
 - Vehicle geometry: `x(t) = v(t − t_CPA) + x₀`, range `R = √(x² + h²)`.
 - Retarded time: solve `c(t − t_r) = R(t_r)` with geometric root selection.
 - **Analysis:** per STFT frame, undo spreading (`×R`) and Doppler (`f_src = f/α`); average to an intrinsic PSD per emitter.
-- **Synthesis:** colored noise from that PSD; `s_obs(t) = s_src(t_r(t)) / R(t)`; sum `N` emitters with `1/√N` scaling. Amplitude peaks at geometric CPA (`t_CPA₂`), not the upload envelope timing.
-- **Phase 1 state (batch labels):** centerline `s(t)=[x,ẋ,y,ẏ]` with `x=v(t−t_CPA)`, `y=h`, `ẋ=v`, `ẏ=0`. Radial velocity from state is `(xẋ+yẏ)/r`. Audio synthesis still uses retarded time; `metadata/kinematics.npy` stores that propagation view separately.
+- **Synthesis:** colored noise from that PSD; `s_obs(t) = s_src(t_r(t)) / R(t)`; sum `N` emitters with `1/√N` scaling. Amplitude follows geometric spreading at render geometry (`t_CPA₂`, `h₂`) — **not** the upload’s recorded envelope timing.
+- **Phase 1 state (batch labels):** instantaneous centerline `s(t)=[x,ẋ,y,ẏ]` with `x=v(t−t_CPA)`, `y=h`, `ẋ=v`, `ẏ=0`. Derived CPA is `argmin √(x²+y²)` on that clock. Audio uses retarded time, so the loudness peak sits near observer min-`R` (≈ `t_CPA + h/c`). `metadata/kinematics.npy` (full export) stores the retarded-time propagation view separately.
 
-Batch and single-clip modes share the same `render_pass_by` backend.
+Batch and single-clip Doppler Pass-By modes share the same `render_pass_by` backend.
 
-Sanity check (no render): `python scripts/verify_phase1_state.py`
+Sanity check: `python scripts/verify_phase1_state.py` (Phase 1 kinematics + a short acoustic CPA regression against `render_pass_by`).
 
 ---
 
@@ -245,9 +245,11 @@ static/batch_outputs/     Generated datasets (gitignored contents)
 
 - Best suited to **subsonic** pass-bys with approximately known geometry.
 - **Supersonic** cases are not modeled correctly.
-- Render amplitude follows **envelope warping**, not explicit `1/R` — levels may differ from the original.
+- Absolute loudness may differ from the upload (peak-normalized WAV; intrinsic PSD + `1/R` only). Timing of the loudness peak follows render `t_CPA₂`, not the recording envelope.
+- Wrong original geometry `(v₁, h₁, t_CPA₁)` corrupts the **inverted spectrum** (timbre), not the loudness CPA time.
 - Early samples can be **silent** until a valid retarded-time root exists.
 - Multiple emitters **smear** the Doppler ridge; each synthesis uses new random noise.
+- Phase 1 `s` is **centerline / instantaneous**; multi-emitter retarded audio is a different object (see `phase1_schema.json`).
 - **Wigner–Ville** (Experimental TF) shows cross-terms on harmonic vehicle audio.
 - Batch planner supports **straight-line** trajectories only.
 

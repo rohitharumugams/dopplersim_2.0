@@ -351,9 +351,12 @@ def phase1_schema(
             "radial_velocity_mps": "(x*vx + y*vy) / range",
             "acceleration_xy_mps2": "[0, 0] (constant speed)",
             "cpa_time_sec": (
-                "argmin_t range(t) on the STFT frame grid — primary ML CPA label"
+                "argmin_t instantaneous centerline range on the STFT frame grid "
+                "(primary ML CPA label). Acoustic loudness peaks near retarded "
+                "min-R ≈ plan t_cpa + h/c (tens of ms for typical h), not exactly "
+                "this derived time."
             ),
-            "cpa_distance_m": "min_t range(t) on the STFT frame grid",
+            "cpa_distance_m": "min_t instantaneous centerline range on the STFT frame grid",
             "direction": (
                 "sign(vx): +1 left-to-right, -1 right-to-left, 0 if |v|~0. "
                 "BREAKING: previously always 0 (unused stub)."
@@ -375,7 +378,9 @@ def phase1_schema(
             "plan_cpa_distance": "cpa_distance_plan_m / schema.plan.cpa_distance_m",
             "note": (
                 "Do not mix plan CPA from older dataset.csv rows with "
-                "spectrogram-aligned state_frames without checking column names."
+                "spectrogram-aligned state_frames without checking column names. "
+                "Frame-derived CPA is instantaneous centerline time; acoustic "
+                "loudness peaks near retarded min-R (≈ plan t_cpa + h/c)."
             ),
         },
         "wav_sr_hz": int(wav_sr),
