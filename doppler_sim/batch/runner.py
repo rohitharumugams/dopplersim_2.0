@@ -181,8 +181,19 @@ def _clip_to_csv_row(
     plan: PlannedSample,
     wav_name: str,
     config: BatchConfig,
+    *,
+    labels: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Build one dataset.csv row.
+
+    ``cpa_time_sec`` / ``cpa_distance_m`` are Phase-1 *derived* (STFT-frame)
+    values when present in ``labels``; plan geometry is stored separately as
+    ``cpa_time_plan_sec`` / ``cpa_distance_plan_m``.
+    """
     source_key, speed_key = csv_speed_field_names(config.speed_unit)
+    labels = labels or {}
+    cpa_time = labels.get("cpa_time_sec", plan.cpa_time_sec)
+    cpa_dist = labels.get("cpa_distance_m", plan.cpa_distance_m)
     return {
         "sample_id": sample_dir_name(plan.index),
         "batch_id": batch_id,
@@ -191,8 +202,10 @@ def _clip_to_csv_row(
         "trajectory_type": plan.path_type,
         source_key: mps_to_display(plan.source_speed_mps, config.speed_unit),
         speed_key: mps_to_display(plan.speed_mps, config.speed_unit),
-        "cpa_distance_m": plan.cpa_distance_m,
-        "cpa_time_sec": plan.cpa_time_sec,
+        "cpa_distance_m": cpa_dist,
+        "cpa_distance_plan_m": plan.cpa_distance_m,
+        "cpa_time_sec": cpa_time,
+        "cpa_time_plan_sec": plan.cpa_time_sec,
         "vehicle_length_m": plan.vehicle_length_m,
         "num_emitters": plan.num_emitters,
         "pass_by_in_clip": True,
@@ -245,7 +258,13 @@ def _process_planned_sample(
         artifact = export_sample_artifacts(
             sample_dir, sample, audio, quantities, batch_id, config
         )
-        row = _clip_to_csv_row(batch_id, sample, artifact["wav_name"], config)
+        row = _clip_to_csv_row(
+            batch_id,
+            sample,
+            artifact["wav_name"],
+            config,
+            labels=artifact.get("labels"),
+        )
         worker_id = os.getpid()
         return {
             "ok": True,
@@ -406,7 +425,13 @@ def _run_samples_sequential(
             artifact = export_sample_artifacts(
                 sample_dir, sample, audio, quantities, batch_id, config
             )
-            row = _clip_to_csv_row(batch_id, sample, artifact["wav_name"], config)
+            row = _clip_to_csv_row(
+                batch_id,
+                sample,
+                artifact["wav_name"],
+                config,
+                labels=artifact.get("labels"),
+            )
             _append_dataset_row(batch_dir, row, dataset_headers)
             _append_clips_jsonl(
                 batch_dir,

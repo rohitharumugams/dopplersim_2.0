@@ -19,6 +19,7 @@ from doppler_sim.batch.planner import BatchConfig, PlannedSample
 from doppler_sim.batch.vehicle_metadata import vehicle_display_name
 from doppler_sim.specg.explorer import (
     SPECG_DEFAULT_ANALYSIS,
+    SPECG_SR,
     export_batch_spectrograms,
     prepare_batch_spec_audio,
 )
@@ -36,11 +37,20 @@ def _meta_dir(sample_dir: Path) -> Path:
     return d
 
 
+def _ensure_primary_stft(keys: list[str]) -> list[str]:
+    """Phase 1 primary acoustic map A is STFT; always export it."""
+    out = list(keys)
+    if "stft" not in out:
+        out = ["stft", *out]
+    return out
+
+
 def _derive_spectral_features(
     spec: np.ndarray,
     y: np.ndarray,
     sr: int,
     hop_length: int,
+    n_fft: int,
 ) -> dict[str, np.ndarray]:
     T = spec.shape[1]
     dt = hop_length / float(sr)
@@ -53,7 +63,9 @@ def _derive_spectral_features(
     dfdt_raw[1:] = (frequency_hz[1:] - frequency_hz[:-1]) / max(dt, 1e-9)
     dfdt = (dfdt_raw / (np.max(np.abs(dfdt_raw)) + 1e-8)).astype(np.float32)
 
-    rms_raw = librosa.feature.rms(y=y, frame_length=hop_length * 2, hop_length=hop_length)[0]
+    rms_raw = librosa.feature.rms(
+        y=y, frame_length=n_fft, hop_length=hop_length, center=True
+    )[0]
     if len(rms_raw) > T:
         rms_raw = rms_raw[:T]
     elif len(rms_raw) < T:
@@ -68,7 +80,8 @@ def _derive_spectral_features(
             spec_topk[t, k, 0] = bin_idx / max(n_freq - 1, 1)
             spec_topk[t, k, 1] = frame[bin_idx]
 
-    time_arr = np.linspace(0, len(y) / float(sr), T, endpoint=False, dtype=np.float32)
+    # Match librosa STFT frame centers (center=True): t_i = i * hop / sr.
+    time_arr = (np.arange(T, dtype=np.float64) * hop_length / float(sr)).astype(np.float32)
     return {
         "frequency": frequency,
         "dfdt": dfdt,
@@ -79,26 +92,29 @@ def _derive_spectral_features(
 
 
 def _kinematics_from_quantities(quantities: dict[str, np.ndarray], sr: int) -> np.ndarray:
+    """Propagation diagnostics at observer sample times: [t, v_r, alpha, R].
+
+    These come from retarded-time emitter geometry used in synthesis. They are
+    not the Phase 1 centerline state; radial velocity from state is separate.
+    """
     t_r = quantities["t_r"]
     v_r = quantities["v_r"]
     alpha = quantities["alpha"]
+    r = quantities.get("R")
     mask = np.isfinite(t_r)
     t_obs = np.arange(len(t_r), dtype=np.float32) / float(sr)
+    if r is None:
+        r_col = np.zeros(int(np.sum(mask)), dtype=np.float32)
+    else:
+        r_col = np.asarray(r, dtype=np.float32)[mask]
     return np.column_stack(
         [
             t_obs[mask],
-            v_r[mask].astype(np.float32),
-            alpha[mask].astype(np.float32),
-            np.zeros(np.sum(mask), dtype=np.float32),
+            np.asarray(v_r, dtype=np.float32)[mask],
+            np.asarray(alpha, dtype=np.float32)[mask],
+            r_col,
         ]
     ).astype(np.float32)
-
-
-def _trajectory_from_plan(plan: PlannedSample, n: int) -> np.ndarray:
-    t = np.linspace(0, plan.t_out_s, n, endpoint=False, dtype=np.float32)
-    x = plan.speed_mps * (t - plan.cpa_time_sec)
-    y = np.full_like(t, plan.cpa_distance_m)
-    return np.column_stack([t, x, y]).astype(np.float32)
 
 
 def _trajectory_plot(plan: PlannedSample, path: Path, *, speed_unit: str = "mps") -> None:
@@ -125,26 +141,11 @@ def _trajectory_plot(plan: PlannedSample, path: Path, *, speed_unit: str = "mps"
         f"Path (Straight), pass-by, v={v_label:g} {unit}, d={d:.1f}m, "
         f"t_CPA={t_cpa:.2f}s, dir={direction}{arrow}"
     )
-    ax.plot(
-        [x_start, x_end],
-        [d, d],
-        color="#2563eb",
-        linewidth=2,
-        label=path_label,
-        zorder=3,
-    )
+    ax.plot([x_start, x_end], [d, d], color="#2563eb", linewidth=2, label=path_label, zorder=3)
     ax.scatter([0], [0], color="#dc2626", s=45, zorder=5, label="Observer")
     ax.scatter([x_start], [d], color="#16a34a", s=45, zorder=5, label="t=0s")
     ax.scatter([x_end], [d], color="#f97316", s=45, zorder=5, label=f"t={t_out:g}s")
-    ax.scatter(
-        [0],
-        [d],
-        color="#9333ea",
-        marker="*",
-        s=140,
-        zorder=6,
-        label=f"CPA {t_cpa:.2f}s",
-    )
+    ax.scatter([0], [d], color="#9333ea", marker="*", s=140, zorder=6, label=f"CPA {t_cpa:.2f}s")
     ax.plot([0, 0], [0, d], linestyle="--", color="#9ca3af", linewidth=1.2, zorder=2)
 
     ax.set_xlim(-half_span, half_span)
@@ -175,6 +176,37 @@ def _speed_unit_label(unit: str) -> str:
     return "km/h" if unit == "kmph" else "m/s"
 
 
+def _write_phase1_metadata(
+    meta_out: Path,
+    plan: PlannedSample,
+    y_wav: np.ndarray,
+    y_spec: np.ndarray,
+    sr_spec: int,
+    analysis,
+    stft_tensor: np.ndarray,
+    *,
+    stft_exported: bool,
+) -> dict[str, Any]:
+    """Write Phase 1 state, frame alignment, derived quantities, and schema."""
+    from doppler_sim.batch.phase1_state import write_phase1_metadata_dir
+
+    return write_phase1_metadata_dir(
+        meta_out,
+        speed_mps=float(plan.speed_mps),
+        cpa_distance_m=float(plan.cpa_distance_m),
+        cpa_time_sec=float(plan.cpa_time_sec),
+        t_out_s=float(plan.t_out_s),
+        y_wav=y_wav,
+        wav_sr=FEATURE_SR,
+        y_spec=y_spec,
+        sr_spec=sr_spec,
+        hop_length=int(analysis.stft.hop_length),
+        n_fft=int(analysis.stft.n_fft),
+        stft_tensor=stft_tensor,
+        stft_exported=stft_exported,
+    )
+
+
 def _export_simple_sample_artifacts(
     sample_dir: Path,
     plan: PlannedSample,
@@ -182,8 +214,9 @@ def _export_simple_sample_artifacts(
     config: BatchConfig,
     wav_name: str,
 ) -> dict[str, Any]:
-    """Minimal export: WAV, spectrogram NPY (+ optional PNG), velocity, CPA time."""
+    """WAV + spectrograms + Phase 1 A/s pairing (legacy scalars kept)."""
     spec_out = _spec_dir(sample_dir)
+    meta_out = _meta_dir(sample_dir)
     analysis = SPECG_DEFAULT_ANALYSIS
     fmax_hz = float(config.specg_fmax_hz)
     y_spec, sr_spec = prepare_batch_spec_audio(y, FEATURE_SR)
@@ -191,26 +224,47 @@ def _export_simple_sample_artifacts(
     speed_label = int(speed_display) if speed_display == int(speed_display) else speed_display
     unit_label = _speed_unit_label(config.speed_unit)
     sample_title = f"{vehicle_display_name(plan.vehicle)} — {speed_label} {unit_label}"
+
+    selected = _ensure_primary_stft(list(config.spectrogram_types))
     exported = export_batch_spectrograms(
         y_spec,
         sr_spec,
         fmax_hz,
         analysis,
-        config.spectrogram_types,
+        selected,
         spec_out,
         sample_title=sample_title,
         png_keys=config.spectrogram_png_types,
         generate_combined=config.generate_combined_png,
     )
+
+    stft_tensor = np.load(spec_out / "stft.npy")
+    phase1 = _write_phase1_metadata(
+        meta_out,
+        plan,
+        y,
+        y_spec,
+        sr_spec,
+        analysis,
+        stft_tensor,
+        stft_exported=True,
+    )
+    derived = phase1["derived_frames"]
+
     np.save(sample_dir / "velocity.npy", np.array([_display_speed(plan, config)], dtype=np.float32))
-    np.save(sample_dir / "cpa.npy", np.array([plan.cpa_time_sec], dtype=np.float32))
+    np.save(sample_dir / "cpa.npy", derived["cpa_time_sec"].astype(np.float32))
+
     speed_key = "speed_kmph" if config.speed_unit == "kmph" else "speed_mps"
     return {
         "wav_name": wav_name,
         "wav_path": wav_name,
         "labels": {
             speed_key: _display_speed(plan, config),
-            "cpa_time_sec": plan.cpa_time_sec,
+            "cpa_time_sec": float(derived["cpa_time_sec"][0]),
+            "cpa_time_plan_sec": float(plan.cpa_time_sec),
+            "cpa_distance_m": float(derived["cpa_distance_m"][0]),
+            "cpa_distance_plan_m": float(plan.cpa_distance_m),
+            "direction": int(derived["direction"][0]),
         },
         "spectrogram_exports": exported,
         "combined_spectrogram": (
@@ -221,6 +275,7 @@ def _export_simple_sample_artifacts(
             and any(k in config.spectrogram_png_types for k in exported)
             else None
         ),
+        "phase1": True,
     }
 
 
@@ -254,34 +309,45 @@ def export_sample_artifacts(
     speed_label = int(speed_display) if speed_display == int(speed_display) else speed_display
     unit_label = _speed_unit_label(config.speed_unit)
     sample_title = f"{vehicle_display_name(plan.vehicle)} — {speed_label} {unit_label}"
+
+    selected = _ensure_primary_stft(list(config.spectrogram_types))
     exported = export_batch_spectrograms(
         y_spec,
         sr_spec,
         fmax_hz,
         analysis,
-        config.spectrogram_types,
+        selected,
         spec_out,
         sample_title=sample_title,
         png_keys=config.spectrogram_png_types,
         generate_combined=config.generate_combined_png,
     )
 
-    if "stft" in exported:
-        stft_tensor = np.load(spec_out / "stft.npy")
-        spectral = _derive_spectral_features(
-            stft_tensor,
-            y_spec,
-            sr_spec,
-            analysis.stft.hop_length,
-        )
-        for name, arr in spectral.items():
-            np.save(meta_out / f"{name}.npy", arr)
+    stft_tensor = np.load(spec_out / "stft.npy")
+    phase1 = _write_phase1_metadata(
+        meta_out,
+        plan,
+        y,
+        y_spec,
+        sr_spec,
+        analysis,
+        stft_tensor,
+        stft_exported=True,
+    )
+    derived = phase1["derived_frames"]
+
+    spectral = _derive_spectral_features(
+        stft_tensor,
+        y_spec,
+        sr_spec,
+        analysis.stft.hop_length,
+        analysis.stft.n_fft,
+    )
+    for name, arr in spectral.items():
+        np.save(meta_out / f"{name}.npy", arr)
 
     kin = _kinematics_from_quantities(quantities, FEATURE_SR)
     np.save(meta_out / "kinematics.npy", kin)
-
-    traj = _trajectory_from_plan(plan, len(y))
-    np.save(meta_out / "trajectory.npy", traj)
     _trajectory_plot(plan, sample_dir / "trajectory_plot.png", speed_unit=config.speed_unit)
 
     from doppler_sim.application import emitter_offsets
@@ -290,9 +356,8 @@ def export_sample_artifacts(
     np.save(meta_out / "source_positions.npy", offsets.astype(np.float32))
 
     np.save(meta_out / "speed.npy", np.array([_display_speed(plan, config)], dtype=np.float32))
-    np.save(meta_out / "distance.npy", np.array([plan.cpa_distance_m], dtype=np.float32))
-    np.save(meta_out / "direction.npy", np.array([0], dtype=np.int32))
-    np.save(meta_out / "cpa_time.npy", np.array([plan.cpa_time_sec], dtype=np.float32))
+    np.save(meta_out / "distance.npy", derived["cpa_distance_m"].astype(np.float32))
+
     speed_key = "speed_kmph" if config.speed_unit == "kmph" else "speed_mps"
     source_speed_key = "source_speed_kmph" if config.speed_unit == "kmph" else "source_speed_mps"
     labels = {
@@ -301,8 +366,12 @@ def export_sample_artifacts(
         "speed_unit": config.speed_unit,
         source_speed_key: mps_to_display(plan.source_speed_mps, config.speed_unit),
         speed_key: _display_speed(plan, config),
-        "cpa_distance_m": plan.cpa_distance_m,
-        "cpa_time_sec": plan.cpa_time_sec,
+        "cpa_distance_m": float(derived["cpa_distance_m"][0]),
+        "cpa_distance_plan_m": float(plan.cpa_distance_m),
+        "cpa_time_sec": float(derived["cpa_time_sec"][0]),
+        "cpa_time_plan_sec": float(plan.cpa_time_sec),
+        "direction": int(derived["direction"][0]),
+        "phase1_state_columns": ["x_m", "vx_mps", "y_m", "vy_mps"],
     }
     np.save(meta_out / "labels.npy", labels, allow_pickle=True)
 
@@ -312,6 +381,14 @@ def export_sample_artifacts(
         "path_type": PATH_TYPE_STRAIGHT,
         "speed_unit": config.speed_unit,
         "source_clip": plan.source_path,
+        "phase1": {
+            "learning_problem": "A(1:T) -> s(1:T)",
+            "state_file": "metadata/state_frames.npy",
+            "acoustic_primary": "spectrograms/stft.npy",
+            "spec_sr_hz": SPECG_SR,
+            "hop_length": int(analysis.stft.hop_length),
+            "n_fft": int(analysis.stft.n_fft),
+        },
         "original_pass_by": {
             ("v1_kmph" if config.speed_unit == "kmph" else "v1_mps"): mps_to_display(
                 plan.source_speed_mps, config.speed_unit
@@ -346,4 +423,5 @@ def export_sample_artifacts(
             and any(k in config.spectrogram_png_types for k in exported)
             else None
         ),
+        "phase1": True,
     }

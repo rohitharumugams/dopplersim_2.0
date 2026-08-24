@@ -798,7 +798,7 @@
       <div class="grid md:grid-cols-2 gap-6">
         <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
           <h2 class="text-lg font-semibold text-white mb-1">Original Pass-By Parameters</h2>
-          <p class="text-xs text-slate-500 mb-4">Used to invert Doppler and 1/R attenuation from the upload before synthesis.</p>
+          <p class="text-xs text-slate-500 mb-4">Used to invert Doppler and 1/R attenuation from the upload before synthesis. Render amplitude follows new geometry (1/R at t_CPA₂), not the upload envelope timing.</p>
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="v1" id="v1-label">Speed v₁ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
@@ -910,6 +910,15 @@
 
     {% if success %}
     <section class="mt-12 space-y-8">
+      {% if phase1_warning %}
+      <div class="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-amber-200 text-sm">
+        {{ phase1_warning }}
+      </div>
+      {% elif phase1_ok %}
+      <div class="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-4 py-2 text-emerald-300/90 text-xs">
+        Phase 1 package written under this render (<code>phase1/spectrograms/stft.npy</code> ↔ <code>phase1/metadata/state_frames.npy</code>). Included in Download bundle.
+      </div>
+      {% endif %}
       <div class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-6">
         <h2 class="text-xl font-semibold text-emerald-300 mb-4">Generated Audio</h2>
         <audio controls class="w-full mb-6" src="{{ audio_url }}"></audio>
@@ -1596,11 +1605,13 @@
       <div class="batch-section" style="margin-top: 0.5rem; margin-bottom: 0.25rem;">
         <label class="batch-spec-check">
           <input type="checkbox" name="simple_generate" />
-          Simple generate
+          Phase 1 export (no trajectory plot / kinematics diagnostics)
         </label>
         <p class="batch-hint" style="margin-top: 0.35rem;">
-          Export only audio, spectrogram NPY files, <code>velocity.npy</code>, and <code>cpa.npy</code>
-          (constant render speed and t<sub>CPA</sub> time in seconds).
+          Still writes WAV, spectrograms (STFT always included), full Phase&nbsp;1
+          <code>metadata/</code> (<code>state_frames.npy</code>, derived CPA, etc.),
+          plus legacy <code>velocity.npy</code> / <code>cpa.npy</code>.
+          Skips trajectory plot and retarded-time <code>kinematics.npy</code> only.
         </p>
       </div>
 

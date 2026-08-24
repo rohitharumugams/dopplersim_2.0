@@ -143,8 +143,6 @@ def synthesize_planned_sample(
         freqs,
         psd_inverted,
         params,
-        uploaded,
-        sr,
     )
 
     aux: dict[str, Any] = {

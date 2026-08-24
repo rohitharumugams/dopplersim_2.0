@@ -107,7 +107,7 @@ Open [http://127.0.0.1:5003](http://127.0.0.1:5003).
 
 | Option | Description |
 |--------|-------------|
-| **Simple generate** | WAV + spectrogram `.npy` + scalar `velocity.npy` + `cpa.npy` only (no `metadata/` or trajectory plot). |
+| **Phase 1 export** (checkbox; formerly “Simple generate”) | WAV + spectrograms + Phase 1 `metadata/` state pairing; skips trajectory plot and propagation `kinematics.npy`. Legacy `velocity.npy` / `cpa.npy` still written. |
 | **Spectrogram NPY** | Per-type `.npy` arrays in `spectrograms/` (default on: STFT, narrowband, log-mel, CQT, reassigned). |
 | **Spectrogram PNG** | Per-type panel images — independent checkboxes; requires that type's NPY to be selected. |
 | **Combined PNG** | Single comparison image of all selected PNG types (off by default). |
@@ -138,25 +138,35 @@ static/batch_outputs/<batch_name>/
   audio_clips/sample_0000001/
     <vehicle>_<speed>mps.wav       # or _<speed>kmh.wav
     trajectory_plot.png
-    spectrograms/                  # .npy (+ optional .png per type)
-    metadata/                      # kinematics, trajectory, labels, simulation_parameters.json, …
+    spectrograms/                  # .npy (+ optional .png); STFT always included (Phase 1 A)
+    metadata/
+      state.npy                    # (N,4) s(t)=[x,vx,y,vy] at WAV sample rate
+      state_times.npy
+      state_frames.npy             # (T,4) s aligned to STFT frame centers
+      frame_times.npy              # (T,) — same T as spectrograms/stft.npy
+      acoustic_state.npy           # (T,4) secondary A_t features
+      range_m.npy, radial_velocity_mps.npy, speed_series_mps.npy, …
+      cpa_time.npy, cpa_distance_m.npy, direction.npy  # derived from s
+      phase1_schema.json           # documents A(1:T) → s(1:T)
+      kinematics.npy, labels.npy, simulation_parameters.json, …
   dataset.csv
-  batch_plan_state.json
-  sampler_state.json
-  progress.json
-  clips_metadata.jsonl
-  metadata_<batch_name>.json
-  generation_log_<batch_name>.txt
+  …
 ```
+
+**Phase 1 learning pair:** `spectrograms/stft.npy` (A) ↔ `metadata/state_frames.npy` (s) via `frame_times.npy`.
+CPA / speed / distance / direction are derived from `s`, not independent physics labels.
+
+**CPA labels:** `cpa_time_sec` / `cpa_distance_m` are **frame-derived** (ML primary). Plan geometry is stored as `cpa_time_plan_sec` / `cpa_distance_plan_m` in `dataset.csv` and `labels.npy`. `direction.npy` is `+1`/`-1` (not the old unused `0` stub). Centerline `s` is not identical to multi-emitter retarded-time synthesis.
 
 **Simple mode** (`simple generate` on):
 
 ```
 audio_clips/sample_0000001/
   <vehicle>_<speed>mps.wav
-  velocity.npy                     # scalar, 1 decimal, chosen unit
-  cpa.npy                          # scalar t_CPA,2 (seconds)
-  spectrograms/
+  velocity.npy                     # scalar display-unit speed (legacy)
+  cpa.npy                          # CPA time derived from s on the STFT grid
+  spectrograms/                    # includes STFT
+  metadata/                        # same Phase 1 state / schema as full mode
 ```
 
 Resume skips any `sample_*` folder that already contains a `.wav` file.
@@ -172,7 +182,7 @@ Resume skips any `sample_*` folder that already contains a `.wav` file.
 5. Optionally enable **Include reassigned spectrograms** (diagnostic plots only).
 6. Click **Generate** — WAV, plots, and bundle download.
 
-Outputs go under `static/` and `renders/` (gitignored).
+Outputs go under `static/` and `renders/`. Each render also writes a **Phase 1 package** at `renders/<id>/phase1/` (same `A`/`s` layout as batch). **Download bundle** includes that `phase1/` folder.
 
 ---
 
@@ -181,9 +191,12 @@ Outputs go under `static/` and `renders/` (gitignored).
 - Vehicle geometry: `x(t) = v(t − t_CPA) + x₀`, range `R = √(x² + h²)`.
 - Retarded time: solve `c(t − t_r) = R(t_r)` with geometric root selection.
 - **Analysis:** per STFT frame, undo spreading (`×R`) and Doppler (`f_src = f/α`); average to an intrinsic PSD per emitter.
-- **Synthesis:** colored noise from that PSD; `s_obs(t) = s_src(t_r(t))`; warp the recorded amplitude envelope; sum `N` emitters with `1/√N` scaling.
+- **Synthesis:** colored noise from that PSD; `s_obs(t) = s_src(t_r(t)) / R(t)`; sum `N` emitters with `1/√N` scaling. Amplitude peaks at geometric CPA (`t_CPA₂`), not the upload envelope timing.
+- **Phase 1 state (batch labels):** centerline `s(t)=[x,ẋ,y,ẏ]` with `x=v(t−t_CPA)`, `y=h`, `ẋ=v`, `ẏ=0`. Radial velocity from state is `(xẋ+yẏ)/r`. Audio synthesis still uses retarded time; `metadata/kinematics.npy` stores that propagation view separately.
 
 Batch and single-clip modes share the same `render_pass_by` backend.
+
+Sanity check (no render): `python scripts/verify_phase1_state.py`
 
 ---
 
@@ -201,6 +214,7 @@ doppler_sim/
     runner.py             Async job, process pool, progress, resume
     pipeline.py             Per-clip synthesis wrapper
     features.py           WAV, spectrograms, metadata export
+    phase1_state.py       Phase 1 s(t)=[x,vx,y,vy] + derived quantities
     constants.py            Paths, CSV headers, speed units
     vehicle_metadata.py     Display names for vehicles
   specg/explorer.py       Spectrogram Explorer + batch spectrogram export

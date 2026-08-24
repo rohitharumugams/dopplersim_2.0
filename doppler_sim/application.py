@@ -360,21 +360,6 @@ def compute_propagation_quantities(
     }
 
 
-def extract_amplitude_envelope(
-    audio: np.ndarray,
-    sr: int,
-    smooth_ms: float = 50.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return (observer times, peak-normalized RMS envelope) from the recording."""
-    frame_len = max(int(sr * smooth_ms / 1000.0), 1)
-    hop = max(frame_len // 4, 1)
-    frames = librosa.util.frame(np.abs(audio), frame_length=frame_len, hop_length=hop)
-    rms = np.sqrt(np.mean(frames**2, axis=0))
-    t_env = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop)
-    rms /= np.max(rms) + 1e-12
-    return t_env, rms
-
-
 def render_emitter(
     freqs: np.ndarray,
     psd: np.ndarray,
@@ -384,12 +369,12 @@ def render_emitter(
     x0: float,
     t_out: float,
     rng: np.random.Generator,
-    v1: float,
-    h1: float,
-    t_cpa1: float,
-    t_env1: np.ndarray,
-    env1: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Propagate intrinsic PSD noise with retarded time and geometric 1/R.
+
+    Loudness peaks at geometric CPA (t ≈ t_cpa + h/c), not at the upload's
+    recorded envelope timing.
+    """
     n_obs = int(np.ceil(t_out * OUTPUT_SR))
     t_obs = np.arange(n_obs, dtype=float) / OUTPUT_SR
 
@@ -417,34 +402,8 @@ def render_emitter(
     )
 
     observed = np.zeros(n_obs, dtype=float)
-    observed[valid] = interpolator(t_r[valid])
-
-    t_obs1 = t_env1
-    q1 = compute_propagation_quantities(t_obs1, v1, h1, x0, t_cpa1)
-    t_r1 = q1["t_r"]
-    valid1 = np.isfinite(t_r1)
-
-    if np.any(valid1):
-        sort_idx = np.argsort(t_r1[valid1])
-        t_r1_sorted = t_r1[valid1][sort_idx]
-        t_obs1_sorted = t_obs1[valid1][sort_idx]
-        src_to_obs1 = interp1d(
-            t_r1_sorted,
-            t_obs1_sorted,
-            bounds_error=False,
-            fill_value=np.nan,
-        )
-        t_obs1_equiv = src_to_obs1(t_r[valid])
-
-        env_interp = interp1d(
-            t_env1,
-            env1,
-            bounds_error=False,
-            fill_value=0.0,
-        )
-        amplitude = env_interp(t_obs1_equiv)
-        amplitude = np.nan_to_num(amplitude, nan=0.0)
-        observed[valid] *= amplitude
+    # s_obs(t) = s_src(t_r(t)) / R(t) — geometric CPA drives the amplitude peak.
+    observed[valid] = interpolator(t_r[valid]) / np.maximum(r[valid], 1e-9)
 
     return observed, quantities
 
@@ -453,8 +412,6 @@ def render_pass_by(
     freqs: np.ndarray,
     psd: np.ndarray,
     params: RenderParams,
-    uploaded_audio: np.ndarray,
-    uploaded_sr: int,
 ) -> tuple[np.ndarray, dict[str, np.ndarray], list[np.ndarray]]:
     offsets = emitter_offsets(params.vehicle_length, params.num_emitters)
     rng = np.random.default_rng()
@@ -464,7 +421,6 @@ def render_pass_by(
 
     reference_quantities: dict[str, np.ndarray] | None = None
     emitter_signals: list[np.ndarray] = []
-    t_env1, env1 = extract_amplitude_envelope(uploaded_audio, uploaded_sr)
 
     for x0 in offsets:
         emitter_rng = np.random.default_rng(rng.integers(0, 2**31 - 1))
@@ -477,11 +433,6 @@ def render_pass_by(
             x0=float(x0),
             t_out=params.t_out,
             rng=emitter_rng,
-            v1=params.v1,
-            h1=params.h1,
-            t_cpa1=params.t_cpa1,
-            t_env1=t_env1,
-            env1=env1,
         )
         emitter_signals.append(contribution)
         output += weight * contribution
@@ -497,6 +448,11 @@ def render_pass_by(
             0.0,
             params.t_cpa2,
         )
+
+    # Peak-normalize for WAV headroom; preserves CPA timing of the loudness peak.
+    peak = float(np.max(np.abs(output)))
+    if peak > 1e-12:
+        output *= 0.95 / peak
 
     return output, reference_quantities, emitter_signals
 
@@ -1034,7 +990,7 @@ def save_render_state(
     pipeline: str = "doppler_2",
     multisource_meta: dict[str, Any] | None = None,
     component_tracks: dict[str, np.ndarray] | None = None,
-) -> None:
+) -> dict[str, Any] | None:
     render_dir = RENDERS_DIR / render_id
     render_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1064,6 +1020,37 @@ def save_render_state(
                 payload[f"track_{key}"] = track
     np.savez_compressed(render_dir / "data.npz", **payload)
 
+    # Phase 1 A/s package (same format as batch metadata/), for single-clip ML export.
+    phase1_info: dict[str, Any] | None = None
+    try:
+        from doppler_sim.batch.phase1_state import export_phase1_package
+
+        phase1_root = render_dir / "phase1"
+        phase1_result = export_phase1_package(
+            phase1_root,
+            speed_mps=float(params.v2),
+            cpa_distance_m=float(params.h2),
+            cpa_time_sec=float(params.t_cpa2),
+            t_out_s=float(params.t_out),
+            audio=generated_audio,
+            wav_sr=OUTPUT_SR,
+            source="pass_by" if pipeline != "multisource_5dot0" else "multisource_pass_by",
+        )
+        phase1_info = {
+            "dir": "phase1",
+            "learning_problem": "A(1:T) -> s(1:T)",
+            "acoustic_primary": "phase1/spectrograms/stft.npy",
+            "state_frames": "phase1/metadata/state_frames.npy",
+            "n_frames": int(phase1_result["bundle"]["n_frames"]),
+            "derived_cpa_time_sec": float(phase1_result["derived_frames"]["cpa_time_sec"][0]),
+            "derived_cpa_distance_m": float(phase1_result["derived_frames"]["cpa_distance_m"][0]),
+            "direction": int(phase1_result["derived_frames"]["direction"][0]),
+            "ok": True,
+        }
+    except Exception as exc:
+        # Keep render usable; surface the failure in the UI via meta.phase1.error.
+        phase1_info = {"ok": False, "error": str(exc)}
+
     meta: dict[str, Any] = {
         "output_name": output_name,
         "upload_filename": upload_filename,
@@ -1073,11 +1060,13 @@ def save_render_state(
         "plots": plots,
         "include_reassigned": include_reassigned,
         "pipeline": pipeline,
+        "phase1": phase1_info,
     }
     if multisource_meta is not None:
         meta["multisource_meta"] = multisource_meta
     (render_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     session[tab.last_render_id_key] = render_id
+    return phase1_info
 
 
 def load_render_state(render_id: str) -> tuple[dict, dict[str, np.ndarray]]:
@@ -1134,6 +1123,13 @@ def build_success_context(
     }
     if meta.get("multisource_meta"):
         ctx["multisource_meta"] = meta["multisource_meta"]
+    phase1 = meta.get("phase1") or {}
+    if isinstance(phase1, dict) and phase1.get("error"):
+        ctx["phase1_warning"] = (
+            f"Pass-By audio was generated, but Phase 1 export failed: {phase1['error']}"
+        )
+    elif isinstance(phase1, dict) and phase1.get("ok"):
+        ctx["phase1_ok"] = True
     return ctx
 
 
@@ -1340,8 +1336,6 @@ def _handle_pass_by_generate(tab: PassByTab):
             freqs,
             psd_inverted,
             params,
-            uploaded_plot_copy,
-            uploaded_sr,
         )
 
         output_name = f"{uuid.uuid4().hex}.wav"
@@ -1393,16 +1387,12 @@ def _handle_pass_by_generate(tab: PassByTab):
             **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
-    meta = {
-        "output_name": output_name,
-        "freq_max": freq_max,
-        "include_reassigned": include_reassigned,
-    }
+    saved_meta, _ = load_render_state(render_id)
     return render_template(
         "index.html",
         **build_success_context(
             render_id,
-            meta,
+            saved_meta,
             plots,
             params,
             speed_unit,
@@ -1496,18 +1486,12 @@ def _handle_multisource_pass_by_generate(tab: PassByTab):
             **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
         )
 
-    meta = {
-        "output_name": output_name,
-        "freq_max": freq_max,
-        "include_reassigned": include_reassigned,
-        "pipeline": "multisource_5dot0",
-        "multisource_meta": ms_meta,
-    }
+    saved_meta, _ = load_render_state(render_id)
     return render_template(
         "index.html",
         **build_success_context(
             render_id,
-            meta,
+            saved_meta,
             plots,
             params,
             speed_unit,
@@ -1597,6 +1581,21 @@ def _handle_pass_by_download_bundle(tab: PassByTab):
             if plot_path.exists():
                 export_name = export_names.get(plot_key, plot_filename)
                 archive.write(plot_path, arcname=f"{bundle_name}/{export_name}")
+
+        # Phase 1 package (spectrograms/stft.npy + metadata/state_frames.npy, …).
+        phase1_dir = RENDERS_DIR / render_id / "phase1"
+        if phase1_dir.is_dir():
+            for path in sorted(phase1_dir.rglob("*")):
+                if path.is_file():
+                    archive.write(
+                        path,
+                        arcname=f"{bundle_name}/phase1/{path.relative_to(phase1_dir).as_posix()}",
+                    )
+            schema_note = (
+                "Phase 1 learning pair: phase1/spectrograms/stft.npy (A) "
+                "↔ phase1/metadata/state_frames.npy (s) via frame_times.npy.\n"
+            )
+            archive.writestr(f"{bundle_name}/phase1/README.txt", schema_note)
 
     buffer.seek(0)
     return send_file(
