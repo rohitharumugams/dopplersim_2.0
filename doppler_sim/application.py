@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib-doppler"))
+os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(tempfile.gettempdir(), "numba-doppler"))
 
 import librosa
 import librosa.display
@@ -74,6 +75,7 @@ HOP_LENGTH = 512
 app = Flask(
     __name__,
     template_folder=str(BASE_DIR / "templates"),
+    static_folder=str(BASE_DIR / "static"),
     static_url_path="/assets",
 )
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
@@ -115,6 +117,18 @@ PASS_BY_MULTISOURCE = PassByTab(
     upload_id_key="ms_upload_id",
     upload_filename_key="ms_upload_filename",
     last_render_id_key="ms_last_render_id",
+)
+PASS_BY_PATH2D = PassByTab(
+    active_tab="path2d",
+    upload_id_key="path2d_upload_id",
+    upload_filename_key="path2d_upload_filename",
+    last_render_id_key="path2d_last_render_id",
+)
+PASS_BY_PATH3D = PassByTab(
+    active_tab="path3d",
+    upload_id_key="path3d_upload_id",
+    upload_filename_key="path3d_upload_filename",
+    last_render_id_key="path3d_last_render_id",
 )
 
 
@@ -960,6 +974,18 @@ def pass_by_tab_urls(tab: PassByTab) -> dict[str, str]:
             "update_freq_max": url_for("multisource_pass_by_update_freq_max"),
             "download_bundle": url_for("multisource_pass_by_download_bundle"),
         }
+    if tab.active_tab == PASS_BY_PATH2D.active_tab:
+        return {
+            "generate": url_for("path2d_generate"),
+            "update_freq_max": url_for("path2d_update_freq_max"),
+            "download_bundle": url_for("path2d_download_bundle"),
+        }
+    if tab.active_tab == PASS_BY_PATH3D.active_tab:
+        return {
+            "generate": url_for("path3d_generate"),
+            "update_freq_max": url_for("path3d_update_freq_max"),
+            "download_bundle": url_for("path3d_download_bundle"),
+        }
     return {
         "generate": url_for("generate"),
         "update_freq_max": url_for("update_freq_max"),
@@ -1123,6 +1149,10 @@ def build_success_context(
     }
     if meta.get("multisource_meta"):
         ctx["multisource_meta"] = meta["multisource_meta"]
+    if meta.get("has_path_animation") and (RENDERS_DIR / render_id / "path_animation.json").exists():
+        endpoint = "path3d_animation" if meta.get("pipeline") == "path3d" else "path2d_animation"
+        ctx["path_animation_url"] = url_for(endpoint, render_id=render_id)
+        ctx["path_animation_dim"] = 3 if meta.get("pipeline") == "path3d" else 2
     phase1 = meta.get("phase1") or {}
     if isinstance(phase1, dict) and phase1.get("error"):
         ctx["phase1_warning"] = (
@@ -2567,4 +2597,519 @@ def batch_status():
     if not batch_name:
         return {"status": "idle"}, 400
     return batch_progress(BASE_DIR, batch_name, output_dir)
+
+
+# ---------------------------------------------------------------------------
+# 2D Path whiteboard (same Pass-By acoustics; trajectory from drawn path)
+# ---------------------------------------------------------------------------
+
+
+def _plot_path2d_board(
+    path_xy: np.ndarray,
+    traj: dict[str, np.ndarray],
+    mic_xy: tuple[float, float],
+    plot_dir: Path,
+    filename: str,
+) -> str:
+    path_xy = np.asarray(path_xy, dtype=float)
+    mx, my = mic_xy
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_facecolor("#ffffff")
+    fig.patch.set_facecolor("#ffffff")
+    ax.plot(path_xy[:, 0], path_xy[:, 1], color="#94a3b8", linewidth=1.5, alpha=0.7, label="Drawn path")
+    ax.plot(traj["x"], traj["y"], color="#2563eb", linewidth=2.0, label="Timed trajectory")
+    ax.scatter([path_xy[0, 0]], [path_xy[0, 1]], c="#16a34a", s=40, zorder=5, label="Start")
+    ax.scatter([path_xy[-1, 0]], [path_xy[-1, 1]], c="#dc2626", s=40, zorder=5, label="End")
+    ax.scatter([mx], [my], c="#111827", marker="x", s=80, zorder=6, label="Microphone")
+    ax.set_aspect("equal", adjustable="datalim")
+    ax.grid(True, which="major", color="#cbd5e1", linewidth=0.8)
+    ax.minorticks_on()
+    ax.axhline(0.0, color="#64748b", linewidth=0.8)
+    ax.axvline(0.0, color="#64748b", linewidth=0.8)
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_title("Observer and vehicle path (meters)")
+    ax.legend(loc="best", fontsize=8)
+    return save_plot(filename, plot_dir)
+
+
+def _write_path_animation(
+    render_id: str,
+    *,
+    traj: dict[str, np.ndarray],
+    path_xy: np.ndarray,
+    mic_xy: tuple[float, float],
+    fps: float = 30.0,
+) -> None:
+    """Downsample timed trajectory for browser-synced path video playback."""
+    t = np.asarray(traj["t"], dtype=np.float64)
+    x = np.asarray(traj["x"], dtype=np.float64)
+    y = np.asarray(traj["y"], dtype=np.float64)
+    if len(t) < 2:
+        return
+    duration = float(t[-1])
+    n_frames = max(int(np.ceil(duration * fps)) + 1, 2)
+    t_q = np.linspace(0.0, duration, n_frames)
+    payload = {
+        "fps": float(fps),
+        "duration_s": duration,
+        "mic": [float(mic_xy[0]), float(mic_xy[1])],
+        "path": np.asarray(path_xy, dtype=np.float64).tolist(),
+        "t": t_q.tolist(),
+        "x": np.interp(t_q, t, x).tolist(),
+        "y": np.interp(t_q, t, y).tolist(),
+        "world": {"xmin": -50.0, "xmax": 50.0, "ymin": -35.0, "ymax": 35.0},
+    }
+    out = RENDERS_DIR / render_id / "path_animation.json"
+    out.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@app.route("/path2d/animation/<render_id>")
+def path2d_animation(render_id: str):
+    path = RENDERS_DIR / render_id / "path_animation.json"
+    if not path.exists():
+        return {"error": "animation not found"}, 404
+    return send_file(path, mimetype="application/json")
+
+
+@app.route("/path2d", methods=["GET"])
+def path2d_board():
+    return render_template("index.html", **form_context(tab=PASS_BY_PATH2D))
+
+
+@app.route("/path2d/generate", methods=["POST"])
+def path2d_generate():
+    from doppler_sim.path2d import synthesize_path_audio
+
+    tab = PASS_BY_PATH2D
+    params, speed_unit = parse_params()
+    freq_max = parse_freq_max()
+    include_reassigned = parse_include_reassigned()
+    upload_path, upload_filename, upload_error = resolve_upload_path(tab)
+    if upload_error:
+        return render_template(
+            "index.html",
+            error=upload_error,
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    try:
+        raw_path = request.form.get("path_json", "").strip()
+        if not raw_path:
+            raise ValueError("Draw a path on the whiteboard before generating.")
+        points = json.loads(raw_path)
+        if not isinstance(points, list) or len(points) < 2:
+            raise ValueError("Path must contain at least two points.")
+        xy = np.asarray([[float(p["x"]), float(p["y"])] for p in points], dtype=np.float64)
+        mic_x = float(request.form.get("mic_x", "0"))
+        mic_y = float(request.form.get("mic_y", "0"))
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Invalid path / mic settings: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    try:
+        audio, sr = librosa.load(upload_path, sr=None, mono=True)
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Failed to load audio: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+    if audio.size == 0:
+        return render_template(
+            "index.html",
+            error="Uploaded file is empty.",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    uploaded_plot_copy = audio.copy()
+    uploaded_sr = sr
+
+    try:
+        freqs, psd_observed, psd_inverted, stft, stft_times = estimate_source_signature(
+            audio, sr, params
+        )
+        del audio
+
+        result = synthesize_path_audio(
+            xy,
+            speed_mps=float(params.v2),
+            sr=OUTPUT_SR,
+            freqs=freqs,
+            psd=psd_inverted,
+            synthesize_psd_noise=synthesize_psd_noise,
+            mic_xy=(mic_x, mic_y),
+            vehicle_length=float(params.vehicle_length),
+            num_emitters=int(params.num_emitters),
+        )
+        generated = result["audio"]
+        quantities = result["quantities"]
+        traj = result["trajectory"]
+
+        # Fill render params from the timed path so Phase 1 / meta stay consistent.
+        params = RenderParams(
+            v1=params.v1,
+            h1=params.h1,
+            t_cpa1=params.t_cpa1,
+            vehicle_length=params.vehicle_length,
+            num_emitters=params.num_emitters,
+            v2=float(params.v2),
+            h2=float(result["cpa_distance_m"]),
+            t_cpa2=float(result["cpa_time_sec"]),
+            t_out=float(traj["duration_s"][0]),
+        )
+
+        output_name = f"{uuid.uuid4().hex}.wav"
+        sf.write(GENERATED_DIR / output_name, generated, OUTPUT_SR, subtype="PCM_16")
+
+        render_id = uuid.uuid4().hex
+        plot_dir = PLOTS_DIR / render_id
+        plots = generate_all_plots(
+            uploaded_plot_copy,
+            uploaded_sr,
+            generated,
+            freqs,
+            psd_observed,
+            psd_inverted,
+            stft,
+            stft_times,
+            params,
+            quantities,
+            plot_dir,
+            freq_max=freq_max,
+            include_reassigned=include_reassigned,
+        )
+        # Replace straight-line observer geometry with the drawn path plot.
+        plots["observer_geometry"] = _plot_path2d_board(
+            xy,
+            traj,
+            (mic_x, mic_y),
+            plot_dir,
+            PLOT_EXPORT_NAMES["observer_geometry"],
+        )
+
+        save_render_state(
+            render_id,
+            tab=tab,
+            output_name=output_name,
+            upload_filename=upload_filename,
+            speed_unit=speed_unit,
+            freq_max=freq_max,
+            params=params,
+            plots=plots,
+            uploaded_audio=uploaded_plot_copy,
+            uploaded_sr=uploaded_sr,
+            generated_audio=generated,
+            freqs=freqs,
+            psd_observed=psd_observed,
+            psd_inverted=psd_inverted,
+            stft=stft,
+            stft_times=stft_times,
+            quantities=quantities,
+            include_reassigned=include_reassigned,
+            pipeline="path2d",
+        )
+        _write_path_animation(
+            render_id,
+            traj=traj,
+            path_xy=xy,
+            mic_xy=(mic_x, mic_y),
+        )
+        meta_path = RENDERS_DIR / render_id / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["has_path_animation"] = True
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Generation failed: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    saved_meta, _ = load_render_state(render_id)
+    return render_template(
+        "index.html",
+        **build_success_context(
+            render_id,
+            saved_meta,
+            plots,
+            params,
+            speed_unit,
+            upload_filename,
+            tab=tab,
+        ),
+    )
+
+
+@app.route("/path2d/update-freq-max", methods=["POST"])
+def path2d_update_freq_max():
+    return _handle_pass_by_update_freq_max(PASS_BY_PATH2D)
+
+
+@app.route("/path2d/download-bundle", methods=["POST"])
+def path2d_download_bundle():
+    return _handle_pass_by_download_bundle(PASS_BY_PATH2D)
+
+
+# ---------------------------------------------------------------------------
+# 3D Path board (same Pass-By acoustics; trajectory in x,y,z)
+# ---------------------------------------------------------------------------
+
+
+def _plot_path3d_board(
+    path_xyz: np.ndarray,
+    traj: dict[str, np.ndarray],
+    mic_xyz: tuple[float, float, float],
+    plot_dir: Path,
+    filename: str,
+) -> str:
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    path_xyz = np.asarray(path_xyz, dtype=float)
+    mx, my, mz = mic_xyz
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot(path_xyz[:, 0], path_xyz[:, 1], path_xyz[:, 2], color="#94a3b8", linewidth=1.5, alpha=0.7, label="Drawn path")
+    ax.plot(traj["x"], traj["y"], traj["z"], color="#2563eb", linewidth=2.0, label="Timed trajectory")
+    ax.scatter([path_xyz[0, 0]], [path_xyz[0, 1]], [path_xyz[0, 2]], c="#16a34a", s=40, label="Start")
+    ax.scatter([path_xyz[-1, 0]], [path_xyz[-1, 1]], [path_xyz[-1, 2]], c="#dc2626", s=40, label="End")
+    ax.scatter([mx], [my], [mz], c="#111827", marker="x", s=80, label="Microphone")
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_zlabel("z (m)")
+    ax.set_title("3D path (meters)")
+    ax.legend(loc="best", fontsize=8)
+    try:
+        ax.set_box_aspect((1, 1, 0.6))
+    except Exception:
+        pass
+    return save_plot(filename, plot_dir)
+
+
+def _write_path3d_animation(
+    render_id: str,
+    *,
+    traj: dict[str, np.ndarray],
+    path_xyz: np.ndarray,
+    mic_xyz: tuple[float, float, float],
+    fps: float = 30.0,
+) -> None:
+    t = np.asarray(traj["t"], dtype=np.float64)
+    x = np.asarray(traj["x"], dtype=np.float64)
+    y = np.asarray(traj["y"], dtype=np.float64)
+    z = np.asarray(traj["z"], dtype=np.float64)
+    if len(t) < 2:
+        return
+    duration = float(t[-1])
+    n_frames = max(int(np.ceil(duration * fps)) + 1, 2)
+    t_q = np.linspace(0.0, duration, n_frames)
+    payload = {
+        "dim": 3,
+        "fps": float(fps),
+        "duration_s": duration,
+        "mic": [float(mic_xyz[0]), float(mic_xyz[1]), float(mic_xyz[2])],
+        "path": np.asarray(path_xyz, dtype=np.float64).tolist(),
+        "t": t_q.tolist(),
+        "x": np.interp(t_q, t, x).tolist(),
+        "y": np.interp(t_q, t, y).tolist(),
+        "z": np.interp(t_q, t, z).tolist(),
+        "world": {"xmin": -50.0, "xmax": 50.0, "ymin": -50.0, "ymax": 50.0, "zmin": 0.0, "zmax": 40.0},
+    }
+    out = RENDERS_DIR / render_id / "path_animation.json"
+    out.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@app.route("/path3d/animation/<render_id>")
+def path3d_animation(render_id: str):
+    path = RENDERS_DIR / render_id / "path_animation.json"
+    if not path.exists():
+        return {"error": "animation not found"}, 404
+    return send_file(path, mimetype="application/json")
+
+
+@app.route("/path3d", methods=["GET"])
+def path3d_board():
+    return render_template("index.html", **form_context(tab=PASS_BY_PATH3D))
+
+
+@app.route("/path3d/generate", methods=["POST"])
+def path3d_generate():
+    from doppler_sim.path3d import synthesize_path3d_audio
+
+    tab = PASS_BY_PATH3D
+    params, speed_unit = parse_params()
+    freq_max = parse_freq_max()
+    include_reassigned = parse_include_reassigned()
+    upload_path, upload_filename, upload_error = resolve_upload_path(tab)
+    if upload_error:
+        return render_template(
+            "index.html",
+            error=upload_error,
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    try:
+        raw_path = request.form.get("path_json", "").strip()
+        if not raw_path:
+            raise ValueError("Draw a path in the 3D board before generating.")
+        points = json.loads(raw_path)
+        if not isinstance(points, list) or len(points) < 2:
+            raise ValueError("Path must contain at least two points.")
+        xyz = np.asarray(
+            [[float(p["x"]), float(p["y"]), float(p["z"])] for p in points],
+            dtype=np.float64,
+        )
+        mic_x = float(request.form.get("mic_x", "0"))
+        mic_y = float(request.form.get("mic_y", "0"))
+        mic_z = float(request.form.get("mic_z", "0"))
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Invalid path / mic settings: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    try:
+        audio, sr = librosa.load(upload_path, sr=None, mono=True)
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Failed to load audio: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+    if audio.size == 0:
+        return render_template(
+            "index.html",
+            error="Uploaded file is empty.",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    uploaded_plot_copy = audio.copy()
+    uploaded_sr = sr
+
+    try:
+        freqs, psd_observed, psd_inverted, stft, stft_times = estimate_source_signature(
+            audio, sr, params
+        )
+        del audio
+
+        result = synthesize_path3d_audio(
+            xyz,
+            speed_mps=float(params.v2),
+            sr=OUTPUT_SR,
+            freqs=freqs,
+            psd=psd_inverted,
+            synthesize_psd_noise=synthesize_psd_noise,
+            mic_xyz=(mic_x, mic_y, mic_z),
+            vehicle_length=float(params.vehicle_length),
+            num_emitters=int(params.num_emitters),
+        )
+        generated = result["audio"]
+        quantities = result["quantities"]
+        traj = result["trajectory"]
+
+        params = RenderParams(
+            v1=params.v1,
+            h1=params.h1,
+            t_cpa1=params.t_cpa1,
+            vehicle_length=params.vehicle_length,
+            num_emitters=params.num_emitters,
+            v2=float(params.v2),
+            h2=float(result["cpa_distance_m"]),
+            t_cpa2=float(result["cpa_time_sec"]),
+            t_out=float(traj["duration_s"][0]),
+        )
+
+        output_name = f"{uuid.uuid4().hex}.wav"
+        sf.write(GENERATED_DIR / output_name, generated, OUTPUT_SR, subtype="PCM_16")
+
+        render_id = uuid.uuid4().hex
+        plot_dir = PLOTS_DIR / render_id
+        plots = generate_all_plots(
+            uploaded_plot_copy,
+            uploaded_sr,
+            generated,
+            freqs,
+            psd_observed,
+            psd_inverted,
+            stft,
+            stft_times,
+            params,
+            quantities,
+            plot_dir,
+            freq_max=freq_max,
+            include_reassigned=include_reassigned,
+        )
+        plots["observer_geometry"] = _plot_path3d_board(
+            xyz,
+            traj,
+            (mic_x, mic_y, mic_z),
+            plot_dir,
+            PLOT_EXPORT_NAMES["observer_geometry"],
+        )
+
+        save_render_state(
+            render_id,
+            tab=tab,
+            output_name=output_name,
+            upload_filename=upload_filename,
+            speed_unit=speed_unit,
+            freq_max=freq_max,
+            params=params,
+            plots=plots,
+            uploaded_audio=uploaded_plot_copy,
+            uploaded_sr=uploaded_sr,
+            generated_audio=generated,
+            freqs=freqs,
+            psd_observed=psd_observed,
+            psd_inverted=psd_inverted,
+            stft=stft,
+            stft_times=stft_times,
+            quantities=quantities,
+            include_reassigned=include_reassigned,
+            pipeline="path3d",
+        )
+        _write_path3d_animation(
+            render_id,
+            traj=traj,
+            path_xyz=xyz,
+            mic_xyz=(mic_x, mic_y, mic_z),
+        )
+        meta_path = RENDERS_DIR / render_id / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["has_path_animation"] = True
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception as exc:
+        return render_template(
+            "index.html",
+            error=f"Generation failed: {exc}",
+            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+        )
+
+    saved_meta, _ = load_render_state(render_id)
+    return render_template(
+        "index.html",
+        **build_success_context(
+            render_id,
+            saved_meta,
+            plots,
+            params,
+            speed_unit,
+            upload_filename,
+            tab=tab,
+        ),
+    )
+
+
+@app.route("/path3d/update-freq-max", methods=["POST"])
+def path3d_update_freq_max():
+    return _handle_pass_by_update_freq_max(PASS_BY_PATH3D)
+
+
+@app.route("/path3d/download-bundle", methods=["POST"])
+def path3d_download_bundle():
+    return _handle_pass_by_download_bundle(PASS_BY_PATH3D)
 
