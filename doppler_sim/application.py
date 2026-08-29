@@ -78,7 +78,7 @@ app = Flask(
     static_folder=str(BASE_DIR / "static"),
     static_url_path="/assets",
 )
-app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "doppler-sim-dev-key")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 if os.environ.get("FORCE_HTTPS", "").lower() in ("1", "true", "yes"):

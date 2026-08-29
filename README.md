@@ -87,7 +87,7 @@ Open [http://127.0.0.1:5003](http://127.0.0.1:5003).
 | `FLASK_DEBUG` | `1` | Flask debug mode (error pages) |
 | `FLASK_USE_RELOADER` | `0` | Auto-reload on code changes. **Keep off** during batch jobs — the reloader kills in-progress generation. |
 
-**Production:** `gunicorn app:app` — see `deploy/` for a systemd example (GCP/Ubuntu).
+**Production:** `gunicorn app:app` — see `deploy/` for a systemd example (GCP/Ubuntu). If nginx sits in front, set `client_max_body_size 100m` (see `deploy/nginx-dopplersim.conf.example`) or uploads hit **413 Request Entity Too Large**. Flask `MAX_CONTENT_LENGTH` is 100 MB.
 
 ---
 
