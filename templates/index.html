@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% elif active_tab == 'batch' %}Batch Generation{% elif active_tab == 'multisource_pass_by' %}Multisource Pass-By{% elif active_tab == 'path2d' %}2D Path Board{% elif active_tab == 'path3d' %}3D{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
+  <title>{% if active_tab == 'spectrograms' %}Spectrogram Explorer{% elif active_tab == 'compare' %}Audio Comparison{% elif active_tab == 'experimental' %}Experimental TF{% elif active_tab == 'batch' %}Batch Generation{% elif active_tab == '2d_whiteboard_batch' %}2D Whiteboard Batch{% elif active_tab == 'multisource_pass_by' %}Multisource Pass-By{% elif active_tab == 'path2d' %}2D Path Board{% elif active_tab == 'path3d' %}3D{% else %}DopplerSim 2.0 — Physics-Based Pass-By Re-Rendering{% endif %}</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -707,13 +707,17 @@
   <script src="{{ url_for('static', filename='path3d_board.js') }}"></script>
   {% endif %}
 </head>
-<body class="{% if active_tab in ['spectrograms', 'compare', 'experimental', 'batch'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
+<body class="{% if active_tab in ['spectrograms', 'compare', 'experimental', 'batch', '2d_whiteboard_batch'] %}specg-page{% else %}bg-slate-950 text-slate-100{% endif %} min-h-screen">
   <nav class="app-tabs">
     <div class="app-tabs-inner">
       <a
         href="{{ url_for('batch_generation') }}"
         class="app-tab {% if active_tab == 'batch' %}app-tab-active{% endif %}"
       >Batch Generation</a>
+      <a
+        href="{{ url_for('path2d_whiteboard_batch') }}"
+        class="app-tab {% if active_tab == '2d_whiteboard_batch' %}app-tab-active{% endif %}"
+      >2D Whiteboard Batch</a>
       <a
         href="{{ url_for('index') }}"
         class="app-tab {% if active_tab == 'doppler' %}app-tab-active{% endif %}"
@@ -760,10 +764,13 @@
         Same single-generation Pass-By pipeline: invert the upload with
         <strong class="text-slate-300">original parameters</strong> (v₁, h₁, t_CPA₁), then re-render with retarded time and 1/R
         along the <strong class="text-slate-300">path you draw</strong> on the metered whiteboard.
+        Phase 1 download labels follow that drawn centerline
+        (<code>polar_state.npy</code>, <code>state_frames.npy</code>), not a straight-line fit.
         {% elif active_tab == 'path3d' %}
         Same Pass-By acoustics as single generation: invert the upload with
         <strong class="text-slate-300">original parameters</strong> (v₁, h₁, t_CPA₁), then re-render with retarded time and 1/R
         along the <strong class="text-slate-300">3D path you draw</strong> (x, y ground; z height, meters).
+        Phase 1 labels match the drawn centerline (mic-centric), not a straight pass-by fit.
         {% else %}
         Physics-informed vehicle pass-by synthesis. The uploaded recording is analyzed using
         the <strong class="text-slate-300">original pass-by parameters</strong> (v₁, h₁, t_CPA₁)
@@ -1018,7 +1025,13 @@
       </div>
       {% elif phase1_ok %}
       <div class="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-4 py-2 text-emerald-300/90 text-xs">
-        Phase 1 package written under this render (<code>phase1/spectrograms/stft.npy</code> ↔ <code>phase1/metadata/state_frames.npy</code>). Included in Download bundle.
+        Phase 1 package written under this render (<code>phase1/spectrograms/stft.npy</code> ↔
+        {% if active_tab in ['path2d', 'path3d'] %}
+        <code>phase1/metadata/polar_state.npy</code> or <code>state_frames.npy</code>
+        {% else %}
+        <code>phase1/metadata/state_frames.npy</code>
+        {% endif %}
+        ). Included in Download bundle.
       </div>
       {% endif %}
       <div class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-6">
@@ -1465,12 +1478,25 @@
     {% endif %}
   </main>
 
-  {% elif active_tab == 'batch' %}
+  {% elif active_tab in ['batch', '2d_whiteboard_batch'] %}
+
+  {% set batch_start_url = url_for('path2d_whiteboard_batch_start') if active_tab == '2d_whiteboard_batch' else url_for('batch_start') %}
+  {% set batch_resume_url = url_for('path2d_whiteboard_batch_resume') if active_tab == '2d_whiteboard_batch' else url_for('batch_resume') %}
+  {% set batch_cancel_url = url_for('path2d_whiteboard_batch_cancel') if active_tab == '2d_whiteboard_batch' else url_for('batch_cancel') %}
+  {% set batch_exists_url = url_for('path2d_whiteboard_batch_exists') if active_tab == '2d_whiteboard_batch' else url_for('batch_exists') %}
+  {% set batch_status_url = url_for('path2d_whiteboard_batch_status') if active_tab == '2d_whiteboard_batch' else url_for('batch_status') %}
 
   <main class="batch-page">
     <header>
-      <h1>Batch Generation</h1>
-      <p class="sub">Straight-line pass-by dataset generation using the Pass-By Sim synthesis pipeline.</p>
+      <h1>{% if active_tab == '2d_whiteboard_batch' %}2D Whiteboard Batch{% else %}Batch Generation{% endif %}</h1>
+      <p class="sub">
+        {% if active_tab == '2d_whiteboard_batch' %}
+        Random polyline paths above the x-axis (random waypoints + smooth spline, bounded turn angle). Uses the same
+        <code>synthesize_path_audio</code> pipeline as the 2D Path Board — no straight-line CPA sampling.
+        {% else %}
+        Straight-line pass-by dataset generation using the Pass-By Sim synthesis pipeline.
+        {% endif %}
+      </p>
     </header>
 
     {% if batch_error %}
@@ -1483,7 +1509,7 @@
     {% endif %}
 
     {% if batch_vehicles %}
-    <form id="batch-form" method="post" action="{{ url_for('batch_start') }}">
+    <form id="batch-form" method="post" action="{{ batch_start_url }}">
       <input type="hidden" name="override_batch" id="override_batch" value="0" />
 
       <div class="batch-section">
@@ -1498,16 +1524,23 @@
           </div>
           <div class="batch-param-group">
             <label class="batch-param-label" for="total_clips">Total clips</label>
-            <input type="number" id="total_clips" name="total_clips" min="1" value="10" required />
+            <input type="number" id="total_clips" name="total_clips" min="1" value="{% if active_tab == '2d_whiteboard_batch' %}1000{% else %}10{% endif %}" required />
           </div>
           <div class="batch-param-group">
             <label class="batch-param-label" for="num_emitters">Emitters per vehicle</label>
-            <input type="number" id="num_emitters" name="num_emitters" min="1" value="2" />
+            <input type="number" id="num_emitters" name="num_emitters" min="1" value="{% if active_tab == '2d_whiteboard_batch' %}1{% else %}2{% endif %}" />
           </div>
+          {% if active_tab == 'batch' %}
           <div class="batch-param-group">
             <label class="batch-param-label" for="t_out_s">Output duration (s)</label>
             <input type="number" id="t_out_s" name="t_out_s" step="any" value="10" />
           </div>
+          {% else %}
+          <div class="batch-param-group">
+            <label class="batch-param-label" for="seed">Path seed</label>
+            <input type="number" id="seed" name="seed" step="1" value="42" />
+          </div>
+          {% endif %}
           <div class="batch-param-group">
             <label class="batch-param-label" for="num_workers">Parallel workers</label>
             <input type="number" id="num_workers" name="num_workers" min="1" max="32" value="{{ batch_num_workers_default }}" />
@@ -1576,13 +1609,14 @@
           </div>
           <div class="batch-vehicle-panel" id="batch-vehicle-panel">
             {% for v in batch_vehicles %}
-            <label class="batch-check" data-vehicle="{{ v.name }}">
+            <label class="batch-check{% if active_tab == '2d_whiteboard_batch' and v.name != 'test_vehicle' %} is-on{% endif %}" data-vehicle="{{ v.name }}">
               <input
                 type="checkbox"
                 name="enabled_{{ v.name }}"
                 class="batch-vehicle-enabled"
                 data-vehicle="{{ v.name }}"
                 data-needs-length="{{ '1' if v.needs_length_input else '0' }}"
+                {% if active_tab == '2d_whiteboard_batch' and v.name != 'test_vehicle' %}checked{% endif %}
               />
               <div class="batch-check-body">
                 <div class="batch-check-title">{{ v.display_name }}</div>
@@ -1671,14 +1705,71 @@
           </div>
           <div class="batch-param-group">
             <label class="batch-param-label" id="batch-speed-min-label">Minimum ({% if batch_speed_unit|default('mps') == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
-            <input type="number" id="batch-speed-min" name="speed_mps_min" step="any" value="{% if batch_speed_unit|default('mps') == 'kmph' %}36{% else %}10{% endif %}" />
+            <input type="number" id="batch-speed-min" name="speed_mps_min" step="any" value="{% if active_tab == '2d_whiteboard_batch' %}{% if batch_speed_unit|default('kmph') == 'kmph' %}30{% else %}8.333{% endif %}{% elif batch_speed_unit|default('mps') == 'kmph' %}36{% else %}10{% endif %}" />
           </div>
           <div class="batch-param-group">
             <label class="batch-param-label" id="batch-speed-max-label">Maximum ({% if batch_speed_unit|default('mps') == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
-            <input type="number" id="batch-speed-max" name="speed_mps_max" step="any" value="{% if batch_speed_unit|default('mps') == 'kmph' %}144{% else %}40{% endif %}" />
+            <input type="number" id="batch-speed-max" name="speed_mps_max" step="any" value="{% if active_tab == '2d_whiteboard_batch' %}{% if batch_speed_unit|default('kmph') == 'kmph' %}105{% else %}29.167{% endif %}{% elif batch_speed_unit|default('mps') == 'kmph' %}144{% else %}40{% endif %}" />
           </div>
         </div>
 
+        {% if active_tab == '2d_whiteboard_batch' %}
+        <div class="batch-section">
+          <h3 class="batch-section-title">Path geometry</h3>
+          <p class="batch-hint">
+            Random waypoints with a shape-preserving <strong>y(x)</strong> spline (PCHIP). Random each clip;
+            corners are rounded without sharp kinks. Increase “Smooth samples / span” for gentler curves.
+          </p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Start x range (m)</label>
+            <div style="display:flex;gap:0.5rem;">
+              <input type="number" name="path_x_start_min" step="any" value="-70" />
+              <input type="number" name="path_x_start_max" step="any" value="-35" />
+            </div>
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">End x range (m)</label>
+            <div style="display:flex;gap:0.5rem;">
+              <input type="number" name="path_x_end_min" step="any" value="35" />
+              <input type="number" name="path_x_end_max" step="any" value="70" />
+            </div>
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Height y range (m)</label>
+            <div style="display:flex;gap:0.5rem;">
+              <input type="number" name="path_y_min" step="any" value="5" />
+              <input type="number" name="path_y_max" step="any" value="28" />
+            </div>
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Max turn (deg)</label>
+            <input type="number" name="path_max_turn_deg" step="any" value="40" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Random waypoints</label>
+            <input type="number" name="path_segments" min="2" value="4" />
+            <p class="batch-hint" style="margin-top:0.25rem;">Control points per path (higher = more wiggle).</p>
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Smooth samples / span</label>
+            <input type="number" name="path_smooth_samples" min="6" value="20" />
+            <p class="batch-hint" style="margin-top:0.25rem;">Denser = smoother curves (default 20).</p>
+          </div>
+        </div>
+
+        <div class="batch-section">
+          <h3 class="batch-section-title">Microphone</h3>
+          <p class="batch-hint">Observer position in world meters (default origin).</p>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Mic x (m)</label>
+            <input type="number" name="mic_x" step="any" value="0" />
+          </div>
+          <div class="batch-param-group">
+            <label class="batch-param-label">Mic y (m)</label>
+            <input type="number" name="mic_y" step="any" value="0" />
+          </div>
+        </div>
+        {% else %}
         <div class="batch-section">
           <h3 class="batch-section-title">Pass-by distance (generated clip)</h3>
           <p class="batch-hint">
@@ -1711,6 +1802,7 @@
             <input type="number" name="t_cpa2_max" step="any" value="5" />
           </div>
         </div>
+        {% endif %}
 
         <div class="batch-section">
           <h3 class="batch-section-title">Source recording geometry</h3>
@@ -1741,8 +1833,8 @@
 
       <div class="batch-actions">
         <button type="submit" class="batch-btn" {% if batch_running %}disabled{% endif %}>Start batch</button>
-        <button type="submit" formaction="{{ url_for('batch_resume') }}" class="batch-btn batch-btn-secondary" {% if batch_running %}disabled{% endif %}>Resume batch</button>
-        <button type="submit" formaction="{{ url_for('batch_cancel') }}" formmethod="post" class="batch-btn batch-btn-secondary">Cancel</button>
+        <button type="submit" formaction="{{ batch_resume_url }}" class="batch-btn batch-btn-secondary" {% if batch_running %}disabled{% endif %}>Resume batch</button>
+        <button type="submit" formaction="{{ batch_cancel_url }}" formmethod="post" class="batch-btn batch-btn-secondary">Cancel</button>
       </div>
     </form>
     {% else %}
@@ -2106,7 +2198,7 @@
         const qs =
           "batch_name=" + encodeURIComponent(name) +
           "&output_dir=" + encodeURIComponent(dir);
-        const response = await fetch("{{ url_for('batch_exists') }}?" + qs);
+        const response = await fetch("{{ batch_exists_url }}?" + qs);
         if (!response.ok) return false;
         const data = await response.json();
         return Boolean(data && data.exists);
@@ -2314,7 +2406,7 @@
             const qs =
               "batch_name=" + encodeURIComponent(target.name) +
               "&output_dir=" + encodeURIComponent(target.dir);
-            fetch("{{ url_for('batch_status') }}?" + qs)
+            fetch("{{ batch_status_url }}?" + qs)
               .then((r) => r.json())
               .then((data) => {
                 if (!isBatchProgressActive(data)) {

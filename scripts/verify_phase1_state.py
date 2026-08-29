@@ -26,10 +26,13 @@ from doppler_sim.application import (  # noqa: E402
     render_pass_by,
 )
 from doppler_sim.batch.phase1_state import (  # noqa: E402
+    build_free_path_phase1_arrays,
     build_phase1_arrays,
     derived_from_state,
+    stft_n_frames,
     straight_passby_state,
 )
+from doppler_sim.path2d.synthesis import resample_path_constant_speed  # noqa: E402
 from doppler_sim.specg.explorer import SPECG_DEFAULT_ANALYSIS, SPECG_SR  # noqa: E402
 
 
@@ -188,9 +191,83 @@ def _verify_acoustic_cpa() -> None:
     )
 
 
+def _verify_free_path_l() -> None:
+    """L-shaped path labels must not collapse to a straight (v, h, t_CPA) fit."""
+    speed = 15.0
+    wav_sr = OUTPUT_SR
+    hop = SPECG_DEFAULT_ANALYSIS.stft.hop_length
+    n_fft = SPECG_DEFAULT_ANALYSIS.stft.n_fft
+
+    xy = np.array([[0.0, 0.0], [20.0, 0.0], [20.0, 15.0]], dtype=np.float64)
+    traj = resample_path_constant_speed(xy, speed_mps=speed, sr=wav_sr)
+    mic = (0.0, 0.0)
+
+    n_wav = len(traj["t"])
+    n_spec = int(np.ceil(float(traj["duration_s"][0]) * SPECG_SR))
+    n_frames = stft_n_frames(n_spec, hop)
+
+    bundle = build_free_path_phase1_arrays(
+        traj,
+        mic_position=mic,
+        n_wav_samples=n_wav,
+        wav_sr=wav_sr,
+        n_spec_samples=n_spec,
+        spec_sr=SPECG_SR,
+        hop_length=hop,
+        n_fft=n_fft,
+        n_frames=n_frames,
+        dim=2,
+    )
+
+    y_free = bundle["state_frames"][:, 2]
+    assert float(np.std(y_free)) > 1.0, "L-path y must vary across frames"
+
+    range_inst = np.sqrt(traj["x"] ** 2 + traj["y"] ** 2)
+    cpa_idx = int(np.argmin(range_inst))
+    t_cpa = float(traj["t"][cpa_idx])
+    h = float(range_inst[cpa_idx])
+
+    straight = build_phase1_arrays(
+        speed_mps=speed,
+        cpa_distance_m=h,
+        cpa_time_sec=t_cpa,
+        n_wav_samples=n_wav,
+        wav_sr=wav_sr,
+        n_spec_samples=n_spec,
+        spec_sr=SPECG_SR,
+        hop_length=hop,
+        n_fft=n_fft,
+        n_frames=n_frames,
+    )
+    y_straight = straight["state_frames"][:, 2]
+    assert np.allclose(y_straight, h, atol=1e-3), "straight fit must keep y=h"
+
+    if np.allclose(y_free, h, atol=0.5):
+        raise AssertionError("free-path y collapsed to straight CPA distance")
+
+    diff = np.max(
+        np.abs(bundle["state_frames"][:, [0, 2]] - straight["state_frames"][:, [0, 2]])
+    )
+    if diff < 2.0:
+        raise AssertionError(
+            f"free-path state too close to straight fit (max |Δx,y|={diff:.3f} m)"
+        )
+
+    polar = bundle["polar_frames"]
+    assert polar.shape == (n_frames, 4), "polar_state must be (T, 4)"
+    assert float(np.std(polar[:, 2])) > 0.05, "bearing must vary on L-path"
+
+    print("free_path_l OK")
+    print(
+        f"  frames={n_frames}  std(y)={float(np.std(y_free)):.3f} m  "
+        f"max |Δ vs straight|={float(diff):.3f} m  CPA h={h:.3f} m"
+    )
+
+
 def main() -> int:
     _verify_kinematics()
     _verify_acoustic_cpa()
+    _verify_free_path_l()
     return 0
 
 

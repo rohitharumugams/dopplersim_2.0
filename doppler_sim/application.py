@@ -1016,6 +1016,8 @@ def save_render_state(
     pipeline: str = "doppler_2",
     multisource_meta: dict[str, Any] | None = None,
     component_tracks: dict[str, np.ndarray] | None = None,
+    path_trajectory: dict[str, np.ndarray] | None = None,
+    mic_position: tuple[float, ...] | None = None,
 ) -> dict[str, Any] | None:
     render_dir = RENDERS_DIR / render_id
     render_dir.mkdir(parents=True, exist_ok=True)
@@ -1049,19 +1051,51 @@ def save_render_state(
     # Phase 1 A/s package (same format as batch metadata/), for single-clip ML export.
     phase1_info: dict[str, Any] | None = None
     try:
-        from doppler_sim.batch.phase1_state import export_phase1_package
-
         phase1_root = render_dir / "phase1"
-        phase1_result = export_phase1_package(
-            phase1_root,
-            speed_mps=float(params.v2),
-            cpa_distance_m=float(params.h2),
-            cpa_time_sec=float(params.t_cpa2),
-            t_out_s=float(params.t_out),
-            audio=generated_audio,
-            wav_sr=OUTPUT_SR,
-            source="pass_by" if pipeline != "multisource_5dot0" else "multisource_pass_by",
-        )
+        if pipeline in ("path2d", "path3d") and path_trajectory is not None and mic_position is not None:
+            from doppler_sim.batch.phase1_state import (
+                PATH_TYPE_FREE_2D,
+                PATH_TYPE_FREE_3D,
+                export_free_path_phase1_package,
+            )
+
+            path_type = PATH_TYPE_FREE_3D if pipeline == "path3d" else PATH_TYPE_FREE_2D
+            dim = 3 if pipeline == "path3d" else 2
+            phase1_result = export_free_path_phase1_package(
+                phase1_root,
+                trajectory=path_trajectory,
+                mic_position=mic_position,
+                cpa_time_sec=float(params.t_cpa2),
+                cpa_distance_m=float(params.h2),
+                speed_mps=float(params.v2),
+                t_out_s=float(params.t_out),
+                audio=generated_audio,
+                wav_sr=OUTPUT_SR,
+                path_type=path_type,
+                dim=dim,
+                source=pipeline,
+            )
+        else:
+            from doppler_sim.batch.phase1_state import export_phase1_package
+
+            if pipeline == "multisource_5dot0":
+                source = "multisource_pass_by"
+            elif pipeline == "path2d":
+                source = "path2d"
+            elif pipeline == "path3d":
+                source = "path3d"
+            else:
+                source = "pass_by"
+            phase1_result = export_phase1_package(
+                phase1_root,
+                speed_mps=float(params.v2),
+                cpa_distance_m=float(params.h2),
+                cpa_time_sec=float(params.t_cpa2),
+                t_out_s=float(params.t_out),
+                audio=generated_audio,
+                wav_sr=OUTPUT_SR,
+                source=source,
+            )
         phase1_info = {
             "dir": "phase1",
             "learning_problem": "A(1:T) -> s(1:T)",
@@ -1073,6 +1107,11 @@ def save_render_state(
             "direction": int(phase1_result["derived_frames"]["direction"][0]),
             "ok": True,
         }
+        if pipeline in ("path2d", "path3d"):
+            schema = phase1_result.get("schema") or {}
+            phase1_info["path_type"] = schema.get("path_type", pipeline)
+            phase1_info["polar_state"] = "phase1/metadata/polar_state.npy"
+            phase1_info["canonical_state_frames"] = "phase1/metadata/canonical_state_frames.npy"
     except Exception as exc:
         # Keep render usable; surface the failure in the UI via meta.phase1.error.
         phase1_info = {"ok": False, "error": str(exc)}
@@ -2600,6 +2639,326 @@ def batch_status():
 
 
 # ---------------------------------------------------------------------------
+# 2D whiteboard batch (random curved paths above x-axis)
+# ---------------------------------------------------------------------------
+
+
+def _path2d_batch_page_context(**extra: Any) -> dict[str, Any]:
+    if "batch_speed_unit" not in extra:
+        extra["batch_speed_unit"] = "kmph"
+    if "batch_num_workers_default" not in extra:
+        extra["batch_num_workers_default"] = 10
+    ctx = _batch_page_context(**extra)
+    ctx["active_tab"] = "2d_whiteboard_batch"
+    from doppler_sim.batch.path2d_runner import is_path2d_batch_running
+
+    ctx["batch_running"] = is_path2d_batch_running()
+    return ctx
+
+
+@app.route("/2d-whiteboard-batch", methods=["GET"])
+def path2d_whiteboard_batch():
+    from doppler_sim.batch.constants import DEFAULT_BATCH_OUTPUT_DIR
+
+    batch_name = request.args.get("batch_name", "")
+    output_dir = (request.args.get("output_dir") or DEFAULT_BATCH_OUTPUT_DIR).strip()
+    progress = None
+    if batch_name:
+        from doppler_sim.batch.path2d_runner import path2d_batch_progress
+
+        raw_progress = path2d_batch_progress(BASE_DIR, batch_name, output_dir)
+        if raw_progress.get("status") not in (None, "", "idle"):
+            progress = raw_progress
+    return render_template(
+        "index.html",
+        batch_progress=progress,
+        **_path2d_batch_page_context(
+            batch_name=batch_name,
+            batch_output_dir=output_dir,
+        ),
+    )
+
+
+@app.route("/2d-whiteboard-batch/start", methods=["POST"])
+def path2d_whiteboard_batch_start():
+    return _path2d_batch_start_or_resume(resume=False)
+
+
+@app.route("/2d-whiteboard-batch/resume", methods=["POST"])
+def path2d_whiteboard_batch_resume():
+    return _path2d_batch_start_or_resume(resume=True)
+
+
+def _path2d_batch_start_or_resume(*, resume: bool):
+    from doppler_sim.batch.constants import DEFAULT_BATCH_NAME, resolve_batch_output_root
+    from doppler_sim.batch.catalog import scan_input_catalog
+    from doppler_sim.batch.path2d_planner import (
+        Path2dBatchConfig,
+        Path2dBatchPlan,
+        VehicleSelection,
+    )
+    from doppler_sim.batch.path2d_runner import start_path2d_batch_async
+    from doppler_sim.specg.explorer import (
+        parse_batch_spec_png_types,
+        parse_batch_spec_types,
+        specg_parse_fmax_hz,
+    )
+    from doppler_sim.specg.explorer import SPECG_SR
+
+    batch_name = (request.form.get("batch_name") or "").strip() or DEFAULT_BATCH_NAME
+
+    output_dir, output_error = _parse_batch_output_dir(request.form)
+    if output_error:
+        return render_template(
+            "index.html",
+            batch_error=output_error,
+            **_path2d_batch_page_context(
+                batch_name=batch_name,
+                batch_output_dir=request.form.get("output_dir", "static/batch_outputs"),
+                batch_input_dir=request.form.get("input_dir", "static/inputs"),
+            ),
+        )
+
+    input_dir, input_error = _parse_batch_input_dir(request.form)
+    if input_error:
+        return render_template(
+            "index.html",
+            batch_error=input_error,
+            **_path2d_batch_page_context(
+                batch_name=batch_name,
+                batch_output_dir=output_dir,
+                batch_input_dir=request.form.get("input_dir", "static/inputs"),
+            ),
+        )
+
+    plan_path = resolve_batch_output_root(BASE_DIR, output_dir) / batch_name / "batch_plan_state.json"
+    batch_dir = resolve_batch_output_root(BASE_DIR, output_dir) / batch_name
+    override_batch = request.form.get("override_batch") in ("1", "true", "on", "yes")
+
+    if resume:
+        if not plan_path.exists():
+            return render_template(
+                "index.html",
+                batch_error=f"No saved plan for batch '{batch_name}' in folder '{output_dir}'.",
+                **_path2d_batch_page_context(
+                    batch_name=batch_name,
+                    batch_output_dir=output_dir,
+                    batch_input_dir=input_dir,
+                ),
+            )
+        config = Path2dBatchPlan.load(plan_path).config
+    else:
+        catalog = scan_input_catalog(BASE_DIR, input_dir)
+        if not catalog.sorted_vehicle_names():
+            from doppler_sim.batch.constants import resolve_input_root
+
+            input_path = resolve_input_root(BASE_DIR, input_dir)
+            return render_template(
+                "index.html",
+                batch_error=f"No source clips found in {input_path}.",
+                **_path2d_batch_page_context(
+                    batch_name=batch_name,
+                    batch_input_dir=input_dir,
+                    batch_output_dir=output_dir,
+                ),
+            )
+
+        selections: list[VehicleSelection] = []
+        for name in catalog.sorted_vehicle_names():
+            if request.form.get(f"enabled_{name}") in ("on", "1", "true", "yes"):
+                try:
+                    speed = float(request.form.get(f"speed_{name}", ""))
+                except (TypeError, ValueError):
+                    return render_template(
+                        "index.html",
+                        batch_error=f"Select a source speed for {name}.",
+                        **_path2d_batch_page_context(
+                            batch_name=batch_name,
+                            batch_input_dir=input_dir,
+                            batch_output_dir=output_dir,
+                        ),
+                    )
+                selections.append(VehicleSelection(vehicle=name, source_speed_mps=speed))
+
+        if not selections:
+            return render_template(
+                "index.html",
+                batch_error="Select at least one vehicle.",
+                batch_vehicle_required=True,
+                **_path2d_batch_page_context(
+                    batch_name=batch_name,
+                    batch_input_dir=input_dir,
+                    batch_output_dir=output_dir,
+                ),
+            )
+
+        for sel in selections:
+            clip = catalog.clip_for(sel.vehicle, sel.source_speed_mps)
+            if clip is None:
+                continue
+            if clip.t_cpa1_s is None:
+                return render_template(
+                    "index.html",
+                    batch_error=(
+                        f"Missing or invalid sidecar for {clip.path.name}: "
+                        f"expected {input_dir}/{clip.path.stem}.txt with "
+                        "'speed_kmh t_cpa1_s'."
+                    ),
+                    **_path2d_batch_page_context(
+                        batch_name=batch_name,
+                        batch_output_dir=output_dir,
+                        batch_input_dir=input_dir,
+                    ),
+                )
+
+        selected_names = [s.vehicle for s in selections]
+        vehicle_lengths, length_error = _parse_batch_vehicle_lengths(request.form, selected_names)
+        if length_error:
+            return render_template(
+                "index.html",
+                batch_error=length_error,
+                **_path2d_batch_page_context(
+                    batch_name=batch_name,
+                    batch_input_dir=input_dir,
+                    batch_output_dir=output_dir,
+                ),
+            )
+
+        try:
+            total_clips = max(1, int(request.form.get("total_clips", "1000")))
+        except (TypeError, ValueError):
+            total_clips = 1000
+
+        speed_unit = parse_speed_unit()
+        default_speed_min = 30.0 if speed_unit == "kmph" else (30.0 / 3.6)
+        default_speed_max = 105.0 if speed_unit == "kmph" else (105.0 / 3.6)
+
+        config = Path2dBatchConfig(
+            batch_name=batch_name,
+            total_clips=total_clips,
+            selections=selections,
+            speed_mps_min=to_mps(parse_float("speed_mps_min", default_speed_min), speed_unit),
+            speed_mps_max=to_mps(parse_float("speed_mps_max", default_speed_max), speed_unit),
+            h1_m=parse_float("h1_m", 0.5),
+            vehicle_lengths=vehicle_lengths or {},
+            num_emitters=max(1, parse_int("num_emitters", 1)),
+            spectrogram_types=parse_batch_spec_types(request.form),
+            spectrogram_png_types=parse_batch_spec_png_types(request.form),
+            generate_combined_png=request.form.get("generate_combined_png")
+            in ("on", "1", "true", "yes"),
+            simple_generate=request.form.get("simple_generate") in ("on", "1", "true", "yes"),
+            speed_unit=speed_unit,
+            num_workers=max(1, parse_int("num_workers", 10)),
+            specg_fmax_hz=specg_parse_fmax_hz(request.form.get("specg_fmax_hz"), SPECG_SR),
+            output_dir=output_dir,
+            input_dir=input_dir,
+            path_x_start_min=parse_float("path_x_start_min", -70.0),
+            path_x_start_max=parse_float("path_x_start_max", -35.0),
+            path_x_end_min=parse_float("path_x_end_min", 35.0),
+            path_x_end_max=parse_float("path_x_end_max", 70.0),
+            path_y_min=parse_float("path_y_min", 5.0),
+            path_y_max=parse_float("path_y_max", 28.0),
+            path_max_turn_deg=parse_float("path_max_turn_deg", 40.0),
+            path_segments=max(2, parse_int("path_segments", 4)),
+            path_smooth_samples=max(6, parse_int("path_smooth_samples", 20)),
+            mic_x=parse_float("mic_x", 0.0),
+            mic_y=parse_float("mic_y", 0.0),
+            seed=max(0, parse_int("seed", 42)),
+        )
+
+        if batch_dir.exists() and not override_batch:
+            return render_template(
+                "index.html",
+                batch_error=(
+                    f"A batch folder named '{batch_name}' already exists in '{output_dir}'. "
+                    "Choose a different batch name or confirm overwrite when starting."
+                ),
+                batch_name_exists=True,
+                **_path2d_batch_page_context(
+                    batch_name=batch_name,
+                    batch_input_dir=input_dir,
+                    batch_output_dir=output_dir,
+                ),
+            )
+
+    ok, message, initial_progress = start_path2d_batch_async(
+        BASE_DIR,
+        config,
+        resume=resume,
+        override=override_batch and not resume,
+    )
+    if not ok:
+        return render_template(
+            "index.html",
+            batch_error=message,
+            **_path2d_batch_page_context(
+                batch_name=batch_name,
+                batch_input_dir=input_dir,
+                batch_output_dir=output_dir,
+            ),
+        )
+
+    batch_progress_payload = initial_progress or {
+        "status": "running",
+        "batch_id": batch_name,
+        "total": config.total_clips,
+        "completed": 0,
+        "failed": 0,
+    }
+    return render_template(
+        "index.html",
+        batch_message=message,
+        batch_progress=batch_progress_payload,
+        **_path2d_batch_page_context(
+            batch_name=batch_name,
+            batch_output_dir=config.output_dir,
+            batch_input_dir=getattr(config, "input_dir", input_dir),
+        ),
+    )
+
+
+@app.route("/2d-whiteboard-batch/exists")
+def path2d_whiteboard_batch_exists():
+    from doppler_sim.batch.constants import DEFAULT_BATCH_OUTPUT_DIR
+    from doppler_sim.batch.path2d_runner import path2d_batch_output_dir_exists
+
+    batch_name = request.args.get("batch_name", "").strip()
+    output_dir = (request.args.get("output_dir") or DEFAULT_BATCH_OUTPUT_DIR).strip()
+    if not batch_name:
+        return {"exists": False}, 400
+    return {
+        "exists": path2d_batch_output_dir_exists(BASE_DIR, batch_name, output_dir),
+        "batch_name": batch_name,
+        "output_dir": output_dir,
+    }
+
+
+@app.route("/2d-whiteboard-batch/cancel", methods=["POST"])
+def path2d_whiteboard_batch_cancel():
+    from doppler_sim.batch.path2d_runner import cancel_path2d_batch
+
+    cancel_path2d_batch()
+    batch_name = request.form.get("batch_name", "")
+    return render_template(
+        "index.html",
+        batch_message="Cancellation requested.",
+        **_path2d_batch_page_context(batch_name=batch_name),
+    )
+
+
+@app.route("/2d-whiteboard-batch/status")
+def path2d_whiteboard_batch_status():
+    from doppler_sim.batch.constants import DEFAULT_BATCH_OUTPUT_DIR
+    from doppler_sim.batch.path2d_runner import path2d_batch_progress
+
+    batch_name = request.args.get("batch_name", "").strip()
+    output_dir = (request.args.get("output_dir") or DEFAULT_BATCH_OUTPUT_DIR).strip()
+    if not batch_name:
+        return {"status": "idle"}, 400
+    return path2d_batch_progress(BASE_DIR, batch_name, output_dir)
+
+
+# ---------------------------------------------------------------------------
 # 2D Path whiteboard (same Pass-By acoustics; trajectory from drawn path)
 # ---------------------------------------------------------------------------
 
@@ -2811,6 +3170,8 @@ def path2d_generate():
             quantities=quantities,
             include_reassigned=include_reassigned,
             pipeline="path2d",
+            path_trajectory=traj,
+            mic_position=(mic_x, mic_y),
         )
         _write_path_animation(
             render_id,
@@ -3071,6 +3432,8 @@ def path3d_generate():
             quantities=quantities,
             include_reassigned=include_reassigned,
             pipeline="path3d",
+            path_trajectory=traj,
+            mic_position=(mic_x, mic_y, mic_z),
         )
         _write_path3d_animation(
             render_id,

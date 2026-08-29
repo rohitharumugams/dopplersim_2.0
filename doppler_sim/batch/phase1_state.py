@@ -39,6 +39,11 @@ import numpy as np
 
 # Column layout for state arrays (documented in phase1_schema.json).
 STATE_COLUMNS = ("x_m", "vx_mps", "y_m", "vy_mps")
+STATE_COLUMNS_3D = ("x_m", "vx_mps", "y_m", "vy_mps", "z_m", "vz_mps")
+POLAR_COLUMNS = ("range_m", "range_rate_mps", "bearing_rad", "bearing_rate_rps")
+PATH_TYPE_STRAIGHT = "straight"
+PATH_TYPE_FREE_2D = "free_path_2d"
+PATH_TYPE_FREE_3D = "free_path_3d"
 
 
 def straight_passby_state(
@@ -87,6 +92,78 @@ def stft_frame_times(
     del n_fft  # documented above; kept so call sites stay explicit
     frames = np.arange(int(n_frames), dtype=np.float64)
     return frames * float(hop_length) / float(sr)
+
+
+def _interp_traj_at(traj: dict[str, np.ndarray], t_query: np.ndarray) -> dict[str, np.ndarray]:
+    """Linear interpolation of timed trajectory keys onto ``t_query``."""
+    t_src = np.asarray(traj["t"], dtype=np.float64)
+    t_query = np.asarray(t_query, dtype=np.float64)
+    keys = ["x", "y", "vx", "vy"]
+    if "z" in traj:
+        keys.extend(["z", "vz"])
+    out: dict[str, np.ndarray] = {"t": t_query}
+    for key in keys:
+        out[key] = np.interp(t_query, t_src, np.asarray(traj[key], dtype=np.float64))
+    return out
+
+
+def _mic_centric_traj(traj: dict[str, np.ndarray], mic_position: tuple[float, ...]) -> dict[str, np.ndarray]:
+    """Translate world trajectory so the microphone is at the origin."""
+    out = {k: np.asarray(v, dtype=np.float64).copy() for k, v in traj.items()}
+    out["x"] = out["x"] - float(mic_position[0])
+    out["y"] = out["y"] - float(mic_position[1])
+    if len(mic_position) > 2 and "z" in out:
+        out["z"] = out["z"] - float(mic_position[2])
+    return out
+
+
+def _cartesian_state_from_components(comp: dict[str, np.ndarray], *, dim: int) -> np.ndarray:
+    if dim == 3:
+        return np.column_stack(
+            [comp["x"], comp["vx"], comp["y"], comp["vy"], comp["z"], comp["vz"]]
+        ).astype(np.float64)
+    return np.column_stack([comp["x"], comp["vx"], comp["y"], comp["vy"]]).astype(np.float64)
+
+
+def _polar_state_2d(x: np.ndarray, vx: np.ndarray, y: np.ndarray, vy: np.ndarray) -> np.ndarray:
+    """Mic-centric polar state [r, r_dot, theta, theta_dot] in the horizontal plane."""
+    r = np.sqrt(x * x + y * y)
+    r_safe = np.maximum(r, 1e-12)
+    r2_safe = np.maximum(r * r, 1e-12)
+    theta = np.arctan2(y, x)
+    r_dot = (x * vx + y * vy) / r_safe
+    theta_dot = (x * vy - y * vx) / r2_safe
+    return np.column_stack([r, r_dot, theta, theta_dot]).astype(np.float32)
+
+
+def _canonicalize_state_2d(state: np.ndarray) -> np.ndarray:
+    """Rotate (and reflect if needed) so CPA lies on +y with vx >= 0 at CPA."""
+    state = np.asarray(state, dtype=np.float64)
+    if state.shape[1] < 4:
+        raise ValueError("canonicalize expects at least 4 state columns")
+    x, vx, y, vy = state[:, 0], state[:, 1], state[:, 2], state[:, 3]
+    range_m = np.sqrt(x * x + y * y)
+    cpa_idx = int(np.argmin(range_m))
+    x_c = float(x[cpa_idx])
+    y_c = float(y[cpa_idx])
+    r_c = float(range_m[cpa_idx])
+    if r_c < 1e-9:
+        return state.astype(np.float32)
+    alpha = float(np.arctan2(x_c, y_c))
+    cos_a = np.cos(alpha)
+    sin_a = np.sin(alpha)
+    x2 = x * cos_a - y * sin_a
+    y2 = x * sin_a + y * cos_a
+    vx2 = vx * cos_a - vy * sin_a
+    vy2 = vx * sin_a + vy * cos_a
+    if float(vx2[cpa_idx]) < 0.0:
+        x2 = -x2
+        vx2 = -vx2
+    if state.shape[1] == 4:
+        return np.column_stack([x2, vx2, y2, vy2]).astype(np.float32)
+    z, vz = state[:, 4], state[:, 5]
+    z2 = z  # rotation in horizontal plane; z unchanged
+    return np.column_stack([x2, vx2, y2, vy2, z2, vz]).astype(np.float32)
 
 
 def derived_from_state(state: np.ndarray, times: np.ndarray) -> dict[str, Any]:
@@ -281,6 +358,319 @@ def build_phase1_arrays(
         "spec_sr": int(spec_sr),
         "wav_sr": int(wav_sr),
     }
+
+
+def build_free_path_phase1_arrays(
+    traj: dict[str, np.ndarray],
+    *,
+    mic_position: tuple[float, ...],
+    n_wav_samples: int,
+    wav_sr: int,
+    n_spec_samples: int,
+    spec_sr: int,
+    hop_length: int,
+    n_fft: int,
+    n_frames: int,
+    dim: int,
+) -> dict[str, Any]:
+    """Build Phase 1 state from a timed free-path centerline (2D or 3D)."""
+    if dim not in (2, 3):
+        raise ValueError(f"dim must be 2 or 3, got {dim}")
+    mc = _mic_centric_traj(traj, mic_position)
+
+    t_wav = sample_times(n_wav_samples, wav_sr)
+    t_frames = stft_frame_times(
+        n_frames,
+        sr=spec_sr,
+        hop_length=hop_length,
+        n_fft=n_fft,
+    )
+    wav_comp = _interp_traj_at(mc, t_wav)
+    frame_comp = _interp_traj_at(mc, t_frames)
+
+    state_wav = _cartesian_state_from_components(wav_comp, dim=dim)
+    state_frames = _cartesian_state_from_components(frame_comp, dim=dim)
+
+    derived_wav = derived_from_state(state_wav[:, :4], t_wav)
+    derived_frames = derived_from_state(state_frames[:, :4], t_frames)
+
+    heading_wav = np.arctan2(wav_comp["vy"], wav_comp["vx"]).astype(np.float32)
+    heading_frames = np.arctan2(frame_comp["vy"], frame_comp["vx"]).astype(np.float32)
+
+    polar_wav = _polar_state_2d(wav_comp["x"], wav_comp["vx"], wav_comp["y"], wav_comp["vy"])
+    polar_frames = _polar_state_2d(
+        frame_comp["x"], frame_comp["vx"], frame_comp["y"], frame_comp["vy"]
+    )
+    canonical_frames = _canonicalize_state_2d(state_frames)
+
+    state_wav_f32 = state_wav.astype(np.float32)
+    state_frames_f32 = state_frames.astype(np.float32)
+    t_wav_f32 = t_wav.astype(np.float32)
+    t_frames_f32 = t_frames.astype(np.float32)
+
+    trajectory = np.column_stack(
+        [t_wav_f32, state_wav_f32[:, 0], state_wav_f32[:, 2]]
+    ).astype(np.float32)
+
+    return {
+        "state": state_wav_f32,
+        "state_times": t_wav_f32,
+        "state_frames": state_frames_f32,
+        "frame_times": t_frames_f32,
+        "trajectory": trajectory,
+        "derived_wav": derived_wav,
+        "derived_frames": derived_frames,
+        "heading_wav": heading_wav,
+        "heading_frames": heading_frames,
+        "polar_wav": polar_wav,
+        "polar_frames": polar_frames,
+        "canonical_frames": canonical_frames,
+        "n_frames": int(n_frames),
+        "hop_length": int(hop_length),
+        "n_fft": int(n_fft),
+        "spec_sr": int(spec_sr),
+        "wav_sr": int(wav_sr),
+        "dim": int(dim),
+    }
+
+
+def free_path_phase1_schema(
+    *,
+    path_type: str,
+    dim: int,
+    hop_length: int,
+    n_fft: int,
+    spec_sr: int,
+    wav_sr: int,
+    n_frames: int,
+    primary_stft_relpath: str = "spectrograms/stft.npy",
+    stft_exported: bool,
+) -> dict[str, Any]:
+    """Schema for whiteboard free-path exports."""
+    columns = list(STATE_COLUMNS) if dim == 2 else list(STATE_COLUMNS_3D)
+    schema = phase1_schema(
+        hop_length=hop_length,
+        n_fft=n_fft,
+        spec_sr=spec_sr,
+        wav_sr=wav_sr,
+        n_frames=n_frames,
+        primary_stft_relpath=primary_stft_relpath,
+        stft_exported=stft_exported,
+    )
+    schema["physical_state"]["columns"] = columns
+    schema["physical_state"]["units"] = (
+        ["m", "m/s", "m", "m/s"] if dim == 2 else ["m", "m/s", "m", "m/s", "m", "m/s"]
+    )
+    schema["physical_state"]["kinematics"] = {
+        "path_type": path_type,
+        "frame": "mic-centric (position relative to observer)",
+        "note": (
+            "Timed centerline from resample_path_constant_speed, not a straight "
+            "(v, h, t_CPA) fit."
+        ),
+    }
+    schema["physical_state"]["semantics"] = (
+        "s(t) is the drawn vehicle centerline at observer time t, mic-centric. "
+        "Audio uses retarded-time propagation on the same polyline. "
+        "Absolute heading is not identifiable from a single omni clip; see "
+        "polar_state.npy and canonical_state_frames.npy."
+    )
+    schema["free_path_extensions"] = {
+        "heading_rad_file": "metadata/heading_rad.npy",
+        "polar_state_file": "metadata/polar_state.npy",
+        "polar_columns": list(POLAR_COLUMNS),
+        "canonical_state_frames_file": "metadata/canonical_state_frames.npy",
+        "ml_primary_state": "metadata/polar_state.npy",
+        "ml_primary_note": (
+            "For free paths, prefer polar_state (r, r_dot, theta, theta_dot) or "
+            "canonical_state_frames over raw (x, vx, y, vy) because heading is "
+            "gauge-dependent from one microphone."
+        ),
+    }
+    schema["path_type"] = path_type
+    return schema
+
+
+def write_free_path_phase1_metadata_dir(
+    meta_out: Path,
+    *,
+    trajectory: dict[str, np.ndarray],
+    mic_position: tuple[float, ...],
+    cpa_time_sec: float,
+    cpa_distance_m: float,
+    speed_mps: float,
+    t_out_s: float,
+    y_wav: np.ndarray,
+    wav_sr: int,
+    y_spec: np.ndarray,
+    sr_spec: int,
+    hop_length: int,
+    n_fft: int,
+    stft_tensor: np.ndarray,
+    path_type: str,
+    dim: int,
+    stft_exported: bool = True,
+    primary_stft_relpath: str = "spectrograms/stft.npy",
+    extra_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Write Phase 1 metadata for a drawn 2D/3D path (not straight pass-by)."""
+    meta_out.mkdir(parents=True, exist_ok=True)
+
+    y_wav = np.asarray(y_wav, dtype=np.float32)
+    y_spec = np.asarray(y_spec, dtype=np.float32)
+    spec_duration_s = len(y_spec) / float(sr_spec)
+    max_wav = max(int(round(spec_duration_s * float(wav_sr))), 1)
+    truncated = False
+    if len(y_wav) > max_wav:
+        y_wav = y_wav[:max_wav]
+        truncated = True
+
+    n_frames = int(stft_tensor.shape[1])
+    bundle = build_free_path_phase1_arrays(
+        trajectory,
+        mic_position=mic_position,
+        n_wav_samples=len(y_wav),
+        wav_sr=int(wav_sr),
+        n_spec_samples=len(y_spec),
+        spec_sr=int(sr_spec),
+        hop_length=int(hop_length),
+        n_fft=int(n_fft),
+        n_frames=n_frames,
+        dim=int(dim),
+    )
+    if bundle["state_frames"].shape[0] != n_frames:
+        raise RuntimeError(
+            f"Phase 1 frame count mismatch: state T={bundle['state_frames'].shape[0]} "
+            f"vs STFT T={n_frames}"
+        )
+
+    derived = bundle["derived_frames"]
+    acoustic = acoustic_state_from_stft(
+        stft_tensor,
+        y_spec,
+        sr=int(sr_spec),
+        hop_length=int(hop_length),
+        n_fft=int(n_fft),
+    )
+
+    np.save(meta_out / "state.npy", bundle["state"])
+    np.save(meta_out / "state_times.npy", bundle["state_times"])
+    np.save(meta_out / "state_frames.npy", bundle["state_frames"])
+    np.save(meta_out / "frame_times.npy", bundle["frame_times"])
+    np.save(meta_out / "trajectory.npy", bundle["trajectory"])
+    np.save(meta_out / "speed_series_mps.npy", derived["speed_mps"])
+    np.save(meta_out / "range_m.npy", derived["range_m"])
+    np.save(meta_out / "radial_velocity_mps.npy", derived["radial_velocity_mps"])
+    np.save(meta_out / "acceleration_xy_mps2.npy", derived["acceleration_xy_mps2"])
+    np.save(meta_out / "cpa_time.npy", derived["cpa_time_sec"])
+    np.save(meta_out / "cpa_distance_m.npy", derived["cpa_distance_m"])
+    np.save(meta_out / "direction.npy", derived["direction"])
+    np.save(meta_out / "heading_rad.npy", bundle["heading_frames"])
+    np.save(meta_out / "polar_state.npy", bundle["polar_frames"])
+    np.save(meta_out / "canonical_state_frames.npy", bundle["canonical_frames"])
+    np.save(meta_out / "acoustic_state.npy", acoustic["acoustic_state"])
+
+    schema = free_path_phase1_schema(
+        path_type=path_type,
+        dim=int(dim),
+        hop_length=int(hop_length),
+        n_fft=int(n_fft),
+        spec_sr=int(sr_spec),
+        wav_sr=int(wav_sr),
+        n_frames=n_frames,
+        primary_stft_relpath=primary_stft_relpath,
+        stft_exported=stft_exported,
+    )
+    schema["plan"] = {
+        "speed_mps": float(speed_mps),
+        "cpa_distance_m": float(cpa_distance_m),
+        "cpa_time_sec": float(cpa_time_sec),
+        "t_out_s": float(t_out_s),
+        "mic_position": [float(x) for x in mic_position],
+    }
+    schema["derived_frame_check"] = {
+        "cpa_time_sec": float(derived["cpa_time_sec"][0]),
+        "cpa_distance_m": float(derived["cpa_distance_m"][0]),
+        "direction": int(derived["direction"][0]),
+    }
+    schema["cpa_labels"] = {
+        "cpa_time_plan_sec": float(cpa_time_sec),
+        "cpa_time_sec": float(derived["cpa_time_sec"][0]),
+        "cpa_distance_plan_m": float(cpa_distance_m),
+        "cpa_distance_m": float(derived["cpa_distance_m"][0]),
+        "ml_primary": "frame-derived from drawn path (not straight fit)",
+    }
+    schema["state_truncated_to_spec_duration"] = truncated
+    if extra_schema:
+        schema.update(extra_schema)
+    (meta_out / "phase1_schema.json").write_text(
+        json.dumps(schema, indent=2),
+        encoding="utf-8",
+    )
+    return {
+        "bundle": bundle,
+        "derived_frames": derived,
+        "acoustic": acoustic,
+        "schema": schema,
+    }
+
+
+def export_free_path_phase1_package(
+    root: Path,
+    *,
+    trajectory: dict[str, np.ndarray],
+    mic_position: tuple[float, ...],
+    cpa_time_sec: float,
+    cpa_distance_m: float,
+    speed_mps: float,
+    t_out_s: float,
+    audio: np.ndarray,
+    wav_sr: int,
+    path_type: str,
+    dim: int,
+    source: str,
+) -> dict[str, Any]:
+    """Export Phase 1 package for 2D/3D Path Board renders."""
+    from doppler_sim.specg.explorer import (
+        SPECG_DEFAULT_ANALYSIS,
+        SPECG_DEFAULT_FMAX_HZ,
+        SPECG_TYPE_BY_KEY,
+        prepare_batch_spec_audio,
+    )
+
+    root = Path(root)
+    spec_out = root / "spectrograms"
+    meta_out = root / "metadata"
+    spec_out.mkdir(parents=True, exist_ok=True)
+
+    y = np.asarray(audio, dtype=np.float32)
+    y_spec, sr_spec = prepare_batch_spec_audio(y, int(wav_sr))
+    analysis = SPECG_DEFAULT_ANALYSIS
+    stft_item = SPECG_TYPE_BY_KEY["stft"]
+    stft_tensor = stft_item.build_tensor(y_spec, sr_spec, float(SPECG_DEFAULT_FMAX_HZ), analysis)
+    np.save(spec_out / "stft.npy", stft_tensor)
+
+    return write_free_path_phase1_metadata_dir(
+        meta_out,
+        trajectory=trajectory,
+        mic_position=mic_position,
+        cpa_time_sec=float(cpa_time_sec),
+        cpa_distance_m=float(cpa_distance_m),
+        speed_mps=float(speed_mps),
+        t_out_s=float(t_out_s),
+        y_wav=y,
+        wav_sr=int(wav_sr),
+        y_spec=y_spec,
+        sr_spec=sr_spec,
+        hop_length=int(analysis.stft.hop_length),
+        n_fft=int(analysis.stft.n_fft),
+        stft_tensor=stft_tensor,
+        path_type=path_type,
+        dim=int(dim),
+        stft_exported=True,
+        primary_stft_relpath="spectrograms/stft.npy",
+        extra_schema={"source": source},
+    )
 
 
 def phase1_schema(

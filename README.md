@@ -184,6 +184,17 @@ Resume skips any `sample_*` folder that already contains a `.wav` file.
 
 Outputs go under `static/` and `renders/`. Each render also writes a **Phase 1 package** at `renders/<id>/phase1/` (same `A`/`s` layout as batch). **Download bundle** includes that `phase1/` folder.
 
+### 2D / 3D Path Board
+
+Draw a polyline on the Path Board; synthesis follows that centerline at constant speed with retarded time and `1/R`. Phase 1 export uses the **drawn path**, not a straight `(v₂, h₂, t_CPA₂)` fit:
+
+- `metadata/state_frames.npy` — mic-centric centerline `[x, vx, y, vy]` (3D adds `z, vz`)
+- `metadata/polar_state.npy` — recommended ML primary for curves (`r, r_dot, θ, θ_dot`)
+- `metadata/canonical_state_frames.npy` — CPA on +y, `vx ≥ 0` at CPA
+- `metadata/phase1_schema.json` — `"path_type": "free_path_2d"` or `"free_path_3d"`
+
+**Note:** Path Board bundles generated before this fix used straight pass-by labels; regenerate for ML use.
+
 ---
 
 ## Physics (short)
@@ -196,7 +207,7 @@ Outputs go under `static/` and `renders/`. Each render also writes a **Phase 1 p
 
 Batch and single-clip Doppler Pass-By modes share the same `render_pass_by` backend.
 
-Sanity check: `python scripts/verify_phase1_state.py` (Phase 1 kinematics + a short acoustic CPA regression against `render_pass_by`).
+Sanity check: `python scripts/verify_phase1_state.py` (straight Phase 1 kinematics, acoustic CPA regression, L-shaped free-path labels).
 
 ---
 
