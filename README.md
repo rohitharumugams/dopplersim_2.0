@@ -201,7 +201,7 @@ Draw a polyline on the Path Board; synthesis follows that centerline at constant
 
 - Vehicle geometry: `x(t) = v(t − t_CPA) + x₀`, range `R = √(x² + h²)`.
 - Retarded time: solve `c(t − t_r) = R(t_r)` with geometric root selection.
-- **Analysis:** per STFT frame, undo spreading (`×R`) and Doppler (`f_src = f/α`); average to an intrinsic PSD per emitter.
+- **Analysis:** per STFT frame, undo spreading (`×R`) and Doppler (`f_src = f/α` with `α = c/(c+v_r)`, `v_r` receding-positive); average to an intrinsic PSD per emitter.
 - **Synthesis:** colored noise from that PSD; `s_obs(t) = s_src(t_r(t)) / R(t)`; sum `N` emitters with `1/√N` scaling. Amplitude follows geometric spreading at render geometry (`t_CPA₂`, `h₂`) — **not** the upload’s recorded envelope timing.
 - **Phase 1 state (batch labels):** instantaneous centerline `s(t)=[x,ẋ,y,ẏ]` with `x=v(t−t_CPA)`, `y=h`, `ẋ=v`, `ẏ=0`. Derived CPA is `argmin √(x²+y²)` on that clock. Audio uses retarded time, so the loudness peak sits near observer min-`R` (≈ `t_CPA + h/c`). `metadata/kinematics.npy` (full export) stores the retarded-time propagation view separately.
 

@@ -1,15 +1,33 @@
-# Example nginx reverse proxy for DopplerSim.
-# Copy into /etc/nginx/sites-available/ (or include from your server block),
-# then: sudo nginx -t && sudo systemctl reload nginx
+# Example nginx reverse proxy for DopplerSim (HTTP + HTTPS).
+# Apply client_max_body_size on EVERY server block that handles uploads —
+# especially the listen 443 ssl block Certbot creates. Setting it only on
+# port 80 does nothing if browsers use https://…
 #
-# The 413 "Request Entity Too Large" error is from client_max_body_size.
-# Keep this at or above Flask MAX_CONTENT_LENGTH (100 MB).
+# After editing: sudo nginx -t && sudo systemctl reload nginx
+# Verify active value: sudo nginx -T 2>/dev/null | grep client_max_body_size
+
+# Global default (applies unless a server/location overrides it):
+# Put this inside the http { } block in /etc/nginx/nginx.conf
+#   client_max_body_size 100m;
 
 server {
     listen 80;
-    server_name _;
+    server_name YOUR_DOMAIN;
 
     client_max_body_size 100m;
+
+    # Typical Certbot redirect — uploads never land here once HTTPS is on.
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name YOUR_DOMAIN;
+
+    # REQUIRED for large WAV uploads over HTTPS
+    client_max_body_size 100m;
+
+    # ssl_certificate / etc. managed by Certbot…
 
     location / {
         proxy_pass http://127.0.0.1:5003;
@@ -19,5 +37,6 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
+        client_max_body_size 100m;
     }
 }

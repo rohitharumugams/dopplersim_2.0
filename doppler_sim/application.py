@@ -71,6 +71,8 @@ DEFAULT_FREQ_MAX = 10000.0
 MAX_FREQ_LIMIT = 22050.0
 N_FFT = 4096
 HOP_LENGTH = 512
+SPEC_HOP_SD = 512
+SPEC_HOP_HD = 128
 
 app = Flask(
     __name__,
@@ -162,7 +164,7 @@ def invert_stft_frame_to_source_power(
     alpha: float,
     distance: float,
 ) -> np.ndarray:
-    """Undo pressure attenuation (×R) and Doppler (f_src = f_obs / α)."""
+    """Undo pressure attenuation (×R) and Doppler (f_src = f_obs / α, α = c/(c+v_r))."""
     magnitude_src = np.abs(stft_frame) * distance
     f_src = freqs / alpha
     return np.interp(freqs, f_src, magnitude_src**2, left=0.0, right=0.0)
@@ -362,7 +364,8 @@ def compute_propagation_quantities(
     r = SPEED_OF_SOUND * (t_obs - t_r)
     x_emitter = vehicle_center_position(t_r, v, t_cpa) + x0
     v_r = v * x_emitter / np.maximum(r, 1e-9)
-    alpha = SPEED_OF_SOUND / (SPEED_OF_SOUND - v_r)
+    # Retarded-time Jacobian du/dt = c/(c + v_r) with v_r = dR/du (receding > 0).
+    alpha = SPEED_OF_SOUND / (SPEED_OF_SOUND + v_r)
     tau = r / SPEED_OF_SOUND
     return {
         "t_r": t_r,
@@ -505,14 +508,15 @@ def plot_spectrogram(
     filename: str,
     plot_dir: Path,
     freq_max: float = DEFAULT_FREQ_MAX,
+    hop_length: int = HOP_LENGTH,
 ) -> str:
     plt.figure(figsize=(10, 4))
-    stft = librosa.stft(audio, n_fft=N_FFT, hop_length=HOP_LENGTH, window="hann")
+    stft = librosa.stft(audio, n_fft=N_FFT, hop_length=hop_length, window="hann")
     magnitude_db = librosa.amplitude_to_db(np.abs(stft), ref=np.max)
     librosa.display.specshow(
         magnitude_db,
         sr=sr,
-        hop_length=HOP_LENGTH,
+        hop_length=hop_length,
         x_axis="time",
         y_axis="hz",
         cmap="magma",
@@ -546,23 +550,41 @@ def plot_psd_comparison(
     psd_inverted: np.ndarray,
     filename: str,
     plot_dir: Path,
+    *,
+    freq_min: float | None = None,
+    freq_max: float | None = None,
 ) -> str:
+    obs = np.maximum(psd_observed, 1e-12)
+    inv = np.maximum(psd_inverted, 1e-12)
+
     plt.figure(figsize=(10, 4))
     plt.semilogy(
         freqs,
-        np.maximum(psd_observed, 1e-12),
+        obs,
         color="#64748b",
         label="Observed (raw recording)",
         alpha=0.9,
     )
     plt.semilogy(
         freqs,
-        np.maximum(psd_inverted, 1e-12),
+        inv,
         color="#059669",
         label="Inverted (intrinsic, used for synthesis)",
         alpha=0.9,
     )
-    plt.title("Observed vs Inverted Source PSD")
+
+    if freq_max is not None:
+        lo = 0.0 if freq_min is None else freq_min
+        plt.xlim(lo, freq_max)
+        mask = (freqs >= lo) & (freqs <= freq_max)
+        if np.any(mask):
+            band = np.concatenate([obs[mask], inv[mask]])
+            plt.ylim(band.min() * 0.5, band.max() * 2.0)
+        title = f"Observed vs Inverted Source PSD ({lo:.0f}–{freq_max:.0f} Hz)"
+    else:
+        title = "Observed vs Inverted Source PSD"
+
+    plt.title(title)
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("PSD")
     plt.legend(loc="best")
@@ -674,6 +696,7 @@ PLOT_EXPORT_NAMES = {
     "uploaded_waveform": "01_uploaded_waveform.png",
     "uploaded_spectrogram": "02_uploaded_spectrogram.png",
     "psd_comparison": "03_psd_comparison.png",
+    "psd_comparison_low": "03b_psd_comparison_0_500hz.png",
     "observed_psd": "04_observed_psd.png",
     "intrinsic_psd": "05_intrinsic_psd.png",
     "inverted_spectrogram": "06_inverted_spectrogram.png",
@@ -704,6 +727,7 @@ def generate_all_plots(
     plot_dir: Path,
     freq_max: float = DEFAULT_FREQ_MAX,
     include_reassigned: bool = False,
+    spec_hop: int = HOP_LENGTH,
 ) -> dict[str, str]:
     t_obs = np.arange(len(generated_audio), dtype=float) / OUTPUT_SR
     plots = {
@@ -722,6 +746,7 @@ def generate_all_plots(
             PLOT_EXPORT_NAMES["uploaded_spectrogram"],
             plot_dir,
             freq_max=freq_max,
+            hop_length=spec_hop,
         ),
         "observed_psd": plot_psd(
             freqs,
@@ -745,6 +770,14 @@ def generate_all_plots(
             psd_inverted,
             PLOT_EXPORT_NAMES["psd_comparison"],
             plot_dir,
+        ),
+        "psd_comparison_low": plot_psd_comparison(
+            freqs,
+            psd_observed,
+            psd_inverted,
+            PLOT_EXPORT_NAMES["psd_comparison_low"],
+            plot_dir,
+            freq_max=500.0,
         ),
         "inverted_spectrogram": plot_inverted_spectrogram(
             stft,
@@ -787,7 +820,7 @@ def generate_all_plots(
             t_obs,
             quantities["alpha"],
             "Doppler Factor vs Observer Time",
-            "α = c / (c − v_r)",
+            "α = c / (c + v_r)",
             PLOT_EXPORT_NAMES["doppler_factor"],
             plot_dir,
             color="#0891b2",
@@ -816,6 +849,7 @@ def generate_all_plots(
             PLOT_EXPORT_NAMES["generated_spectrogram"],
             plot_dir,
             freq_max=freq_max,
+            hop_length=spec_hop,
         ),
     }
     if include_reassigned:
@@ -826,7 +860,7 @@ def generate_all_plots(
             PLOT_EXPORT_NAMES["uploaded_reassigned"],
             plot_dir,
             n_fft=N_FFT,
-            hop_length=HOP_LENGTH,
+            hop_length=spec_hop,
             freq_max=freq_max,
             t_cpa=params.t_cpa1,
         )
@@ -837,7 +871,7 @@ def generate_all_plots(
             PLOT_EXPORT_NAMES["generated_reassigned"],
             plot_dir,
             n_fft=N_FFT,
-            hop_length=HOP_LENGTH,
+            hop_length=spec_hop,
             freq_max=freq_max,
             t_cpa=params.t_cpa2,
         )
@@ -956,6 +990,15 @@ def parse_include_reassigned() -> bool:
     return request.form.get("include_reassigned") in ("on", "true", "1", "yes")
 
 
+def parse_spec_quality(default: str = "sd") -> str:
+    raw = (request.form.get("spec_quality") or default).strip().lower()
+    return "hd" if raw == "hd" else "sd"
+
+
+def spec_hop_for_quality(quality: str) -> int:
+    return SPEC_HOP_HD if quality == "hd" else SPEC_HOP_SD
+
+
 def parse_optional_t_cpa() -> float | None:
     raw = request.form.get("t_cpa", "").strip()
     if not raw:
@@ -1013,6 +1056,7 @@ def save_render_state(
     stft_times: np.ndarray | None = None,
     quantities: dict[str, np.ndarray] | None = None,
     include_reassigned: bool = False,
+    spec_quality: str = "sd",
     pipeline: str = "doppler_2",
     multisource_meta: dict[str, Any] | None = None,
     component_tracks: dict[str, np.ndarray] | None = None,
@@ -1124,6 +1168,7 @@ def save_render_state(
         "params": asdict(params),
         "plots": plots,
         "include_reassigned": include_reassigned,
+        "spec_quality": spec_quality,
         "pipeline": pipeline,
         "phase1": phase1_info,
     }
@@ -1176,6 +1221,7 @@ def build_success_context(
         "audio_url": url_for("generated_file", filename=output_name),
         "freq_max": freq_max,
         "include_reassigned": bool(meta.get("include_reassigned", False)),
+        "spec_quality": meta.get("spec_quality", "sd"),
         "plots": plot_urls_for_render(render_id, plots, freq_max),
         "multisource_pipeline": meta.get("pipeline") == "multisource_5dot0",
         **form_context(
@@ -1202,11 +1248,18 @@ def build_success_context(
     return ctx
 
 
-def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, RenderParams, dict[str, str]]:
+def regenerate_plots_from_state(
+    render_id: str,
+    freq_max: float,
+    *,
+    spec_quality: str | None = None,
+) -> tuple[dict, RenderParams, dict[str, str]]:
     meta, arrays = load_render_state(render_id)
     params = RenderParams(**meta["params"])
     plot_dir = PLOTS_DIR / render_id
     include_reassigned = bool(meta.get("include_reassigned", False))
+    quality = spec_quality if spec_quality is not None else meta.get("spec_quality", "sd")
+    spec_hop = spec_hop_for_quality(quality)
 
     if meta.get("pipeline") == "multisource_5dot0":
         component_tracks = {
@@ -1239,9 +1292,12 @@ def regenerate_plots_from_state(render_id: str, freq_max: float) -> tuple[dict, 
             plot_dir,
             freq_max=freq_max,
             include_reassigned=include_reassigned,
+            spec_hop=spec_hop,
         )
 
     meta["freq_max"] = freq_max
+    if spec_quality is not None:
+        meta["spec_quality"] = spec_quality
     meta["plots"] = plots
     (RENDERS_DIR / render_id / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return meta, params, plots
@@ -1297,6 +1353,7 @@ def form_context(
     params: RenderParams | None = None,
     speed_unit: str = "mps",
     freq_max: float = DEFAULT_FREQ_MAX,
+    spec_quality: str = "sd",
     *,
     tab: PassByTab = PASS_BY_DOPPLER,
     **extra,
@@ -1307,6 +1364,7 @@ def form_context(
         "pass_by_urls": pass_by_tab_urls(tab),
         "speed_unit": speed_unit,
         "freq_max": freq_max,
+        "spec_quality": spec_quality,
         "v1_display": from_mps(params.v1, speed_unit) if params else (72.0 if speed_unit == "kmph" else 20.0),
         "v2_display": from_mps(params.v2, speed_unit) if params else (90.0 if speed_unit == "kmph" else 25.0),
     }
@@ -1366,12 +1424,16 @@ def _handle_pass_by_generate(tab: PassByTab):
     params, speed_unit = parse_params()
     freq_max = parse_freq_max()
     include_reassigned = parse_include_reassigned()
+    spec_quality = parse_spec_quality() if tab.active_tab == PASS_BY_DOPPLER.active_tab else "sd"
+    spec_hop = spec_hop_for_quality(spec_quality)
     upload_path, upload_filename, upload_error = resolve_upload_path(tab)
     if upload_error:
         return render_template(
             "index.html",
             error=upload_error,
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     try:
@@ -1380,14 +1442,18 @@ def _handle_pass_by_generate(tab: PassByTab):
         return render_template(
             "index.html",
             error=f"Failed to load audio: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     if audio.size == 0:
         return render_template(
             "index.html",
             error="Uploaded file is empty.",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     uploaded_plot_copy = audio.copy()
@@ -1427,6 +1493,7 @@ def _handle_pass_by_generate(tab: PassByTab):
             plot_dir,
             freq_max=freq_max,
             include_reassigned=include_reassigned,
+            spec_hop=spec_hop,
         )
 
         save_render_state(
@@ -1448,12 +1515,15 @@ def _handle_pass_by_generate(tab: PassByTab):
             stft_times=stft_times,
             quantities=quantities,
             include_reassigned=include_reassigned,
+            spec_quality=spec_quality,
         )
     except Exception as exc:
         return render_template(
             "index.html",
             error=f"Generation failed: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     saved_meta, _ = load_render_state(render_id)
@@ -1596,7 +1666,12 @@ def _handle_pass_by_update_freq_max(tab: PassByTab):
 
     meta, arrays = load_render_state(render_id)
     freq_max = parse_freq_max(default=float(meta.get("freq_max", DEFAULT_FREQ_MAX)))
-    meta, params, plots = regenerate_plots_from_state(render_id, freq_max)
+    spec_quality = None
+    if tab.active_tab in (PASS_BY_DOPPLER.active_tab, PASS_BY_PATH2D.active_tab):
+        spec_quality = parse_spec_quality(default=meta.get("spec_quality", "sd"))
+    meta, params, plots = regenerate_plots_from_state(
+        render_id, freq_max, spec_quality=spec_quality
+    )
     speed_unit = meta.get("speed_unit", "mps")
 
     return render_template(
@@ -2847,6 +2922,7 @@ def _path2d_batch_start_or_resume(*, resume: bool):
             generate_combined_png=request.form.get("generate_combined_png")
             in ("on", "1", "true", "yes"),
             simple_generate=request.form.get("simple_generate") in ("on", "1", "true", "yes"),
+            train_mode=request.form.get("train_mode") in ("on", "1", "true", "yes"),
             speed_unit=speed_unit,
             num_workers=max(1, parse_int("num_workers", 10)),
             specg_fmax_hz=specg_parse_fmax_hz(request.form.get("specg_fmax_hz"), SPECG_SR),
@@ -2865,6 +2941,11 @@ def _path2d_batch_start_or_resume(*, resume: bool):
             mic_y=parse_float("mic_y", 0.0),
             seed=max(0, parse_int("seed", 42)),
         )
+        if config.train_mode:
+            config.spectrogram_types = ["stft"]
+            config.spectrogram_png_types = []
+            config.generate_combined_png = False
+            config.simple_generate = False
 
         if batch_dir.exists() and not override_batch:
             return render_template(
@@ -3044,12 +3125,16 @@ def path2d_generate():
     params, speed_unit = parse_params()
     freq_max = parse_freq_max()
     include_reassigned = parse_include_reassigned()
+    spec_quality = parse_spec_quality()
+    spec_hop = spec_hop_for_quality(spec_quality)
     upload_path, upload_filename, upload_error = resolve_upload_path(tab)
     if upload_error:
         return render_template(
             "index.html",
             error=upload_error,
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     try:
@@ -3066,7 +3151,9 @@ def path2d_generate():
         return render_template(
             "index.html",
             error=f"Invalid path / mic settings: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     try:
@@ -3075,13 +3162,17 @@ def path2d_generate():
         return render_template(
             "index.html",
             error=f"Failed to load audio: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
     if audio.size == 0:
         return render_template(
             "index.html",
             error="Uploaded file is empty.",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     uploaded_plot_copy = audio.copy()
@@ -3140,6 +3231,7 @@ def path2d_generate():
             plot_dir,
             freq_max=freq_max,
             include_reassigned=include_reassigned,
+            spec_hop=spec_hop,
         )
         # Replace straight-line observer geometry with the drawn path plot.
         plots["observer_geometry"] = _plot_path2d_board(
@@ -3169,6 +3261,7 @@ def path2d_generate():
             stft_times=stft_times,
             quantities=quantities,
             include_reassigned=include_reassigned,
+            spec_quality=spec_quality,
             pipeline="path2d",
             path_trajectory=traj,
             mic_position=(mic_x, mic_y),
@@ -3187,7 +3280,9 @@ def path2d_generate():
         return render_template(
             "index.html",
             error=f"Generation failed: {exc}",
-            **form_context(params, speed_unit, freq_max=freq_max, tab=tab),
+            **form_context(
+                params, speed_unit, freq_max=freq_max, spec_quality=spec_quality, tab=tab
+            ),
         )
 
     saved_meta, _ = load_render_state(render_id)

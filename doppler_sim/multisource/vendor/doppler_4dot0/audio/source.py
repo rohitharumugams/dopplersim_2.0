@@ -19,6 +19,29 @@ def flatten_rms(x: np.ndarray, sr: int, win_ms: float = 50.0) -> np.ndarray:
     return flat.astype(np.float32)
 
 
+def crossfade_segments(parts: list[np.ndarray], sr: int, fade_s: float = 0.05) -> np.ndarray:
+    """Join source excerpts with raised-cosine overlap instead of hard seams."""
+    if not parts:
+        return np.array([], dtype=np.float32)
+
+    out = np.asarray(parts[0], dtype=np.float64).ravel().copy()
+    target_fade = max(1, int(float(fade_s) * int(sr)))
+    for part in parts[1:]:
+        nxt = np.asarray(part, dtype=np.float64).ravel()
+        fade = min(target_fade, len(out), len(nxt))
+        if fade < 2:
+            out = np.concatenate([out, nxt])
+            continue
+
+        # Endpoints remain continuous with their original neighboring samples.
+        phase = np.linspace(0.0, np.pi, fade, dtype=np.float64)
+        fade_in = 0.5 - 0.5 * np.cos(phase)
+        blend = out[-fade:] * (1.0 - fade_in) + nxt[:fade] * fade_in
+        out = np.concatenate([out[:-fade], blend, nxt[fade:]])
+
+    return out.astype(np.float32)
+
+
 def approach_timbre_excerpt(
     passby: np.ndarray,
     sr: int,
@@ -122,7 +145,9 @@ def passby_stationary_timbre(
     if not parts:
         return flatten_rms(y, sr)
 
-    cat = np.concatenate(parts)
+    # Approach and recession are unrelated waveform phases. A direct concat
+    # creates an impulse-like jump near t_CPA - cpa_margin_s.
+    cat = crossfade_segments(parts, sr)
     return flatten_rms(cat, sr)
 
 

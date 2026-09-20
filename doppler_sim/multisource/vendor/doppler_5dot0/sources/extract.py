@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from doppler_4dot0.audio.source import (
+    crossfade_segments,
     emission_level_envelope,
     flatten_rms,
     pad_for_doppler,
@@ -47,7 +48,7 @@ def _excerpt(
 
     if not parts:
         return flatten_rms(y, sr)
-    return flatten_rms(np.concatenate(parts), sr)
+    return flatten_rms(crossfade_segments(parts, sr), sr)
 
 
 def _full_harmonic_timbre(
@@ -150,7 +151,10 @@ def _seamless_tile(x: np.ndarray, n_samples: int) -> np.ndarray:
         chunk = buf.copy()
         if fade > 8 and len(out) >= fade:
             ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
-            chunk[:fade] = chunk[:fade] * ramp + out[-fade:] * (1.0 - ramp)
+            # Overlap the end of the accumulated signal with the beginning of
+            # the next loop. Previously this blend was written to chunk[:fade]
+            # and then chunk[fade:] was appended, discarding the crossfade.
+            out[-fade:] = out[-fade:] * (1.0 - ramp) + chunk[:fade] * ramp
         out = np.concatenate([out, chunk[fade:]])
     return out[:need].astype(np.float32)
 

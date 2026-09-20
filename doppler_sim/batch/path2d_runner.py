@@ -7,7 +7,7 @@ import os
 import shutil
 import threading
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -329,17 +329,27 @@ def _run_samples_parallel(
     started_at: str,
 ) -> bool:
     workers = max(1, min(int(config.num_workers), len(pending_samples)))
+    # Keep a small queue so workers start producing immediately instead of
+    # blocking the UI for minutes while all N tasks are pickled/submitted.
+    max_in_flight = max(workers * 3, workers)
 
     _append_log(
         batch_dir,
         batch_id,
         f"[{_utc_now()}] Starting {workers} worker processes for "
-        f"{len(pending_samples)} clips",
+        f"{len(pending_samples)} clips (queue depth {max_in_flight})",
     )
 
     _write_progress(
         batch_dir,
-        _progress_payload(batch_id, config, stats, in_flight=0, started_at=started_at),
+        _progress_payload(
+            batch_id,
+            config,
+            stats,
+            in_flight=0,
+            message=f"Spawning {workers} workers…",
+            started_at=started_at,
+        ),
     )
 
     if _is_cancelled():
@@ -358,27 +368,51 @@ def _run_samples_parallel(
 
     config_payload = config.to_dict()
     mp_context = mp.get_context("spawn")
+    pending_iter = iter(pending_samples)
+    future_to_sample: dict[Any, Path2dPlannedSample] = {}
 
     with ProcessPoolExecutor(
         max_workers=workers,
         mp_context=mp_context,
         initializer=_init_worker_process,
     ) as executor:
-        future_to_sample = {
-            executor.submit(
+
+        def _submit_one(sample: Path2dPlannedSample) -> None:
+            fut = executor.submit(
                 _run_path2d_batch_sample_task,
                 str(base_dir),
                 sample.to_dict(),
                 config_payload,
                 batch_id,
-            ): sample
-            for sample in pending_samples
-        }
+            )
+            future_to_sample[fut] = sample
 
-        in_flight_count = len(future_to_sample)
+        for sample in pending_iter:
+            _submit_one(sample)
+            if len(future_to_sample) >= max_in_flight:
+                break
 
-        for future in as_completed(future_to_sample):
-            in_flight_count -= 1
+        _write_progress(
+            batch_dir,
+            _progress_payload(
+                batch_id,
+                config,
+                stats,
+                in_flight=len(future_to_sample),
+                message="Generating clips…",
+                started_at=started_at,
+            ),
+        )
+        _append_log(
+            batch_dir,
+            batch_id,
+            f"[{_utc_now()}] Workers ready — {len(future_to_sample)} tasks in flight",
+        )
+
+        while future_to_sample:
+            done, _ = wait(
+                set(future_to_sample.keys()), return_when=FIRST_COMPLETED
+            )
 
             if _is_cancelled():
                 for f in future_to_sample:
@@ -390,7 +424,7 @@ def _run_samples_parallel(
                         config,
                         stats,
                         status="cancelled",
-                        in_flight=in_flight_count,
+                        in_flight=len(future_to_sample),
                         message="Cancelled by user",
                         started_at=started_at,
                     ),
@@ -398,35 +432,47 @@ def _run_samples_parallel(
                 _append_log(batch_dir, batch_id, f"[{_utc_now()}] Batch cancelled")
                 return False
 
-            try:
-                result = future.result()
-            except Exception as exc:
-                result = {
-                    "ok": False,
-                    "index": future_to_sample[future].index,
-                    "error": str(exc),
-                    "traceback": traceback.format_exc(),
-                }
+            for future in done:
+                sample = future_to_sample.pop(future)
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    result = {
+                        "ok": False,
+                        "index": sample.index,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    }
 
-            _process_sample_result(
-                result,
-                batch_dir=batch_dir,
-                batch_id=batch_id,
-                dataset_headers=dataset_headers,
-                stats=stats,
-                completed=completed,
-            )
-            _write_progress(
-                batch_dir,
-                _progress_payload(
-                    batch_id,
-                    config,
-                    stats,
-                    current_sample=result.get("index"),
-                    in_flight=in_flight_count,
-                    started_at=started_at,
-                ),
-            )
+                _process_sample_result(
+                    result,
+                    batch_dir=batch_dir,
+                    batch_id=batch_id,
+                    dataset_headers=dataset_headers,
+                    stats=stats,
+                    completed=completed,
+                )
+
+                if not _is_cancelled():
+                    try:
+                        nxt = next(pending_iter)
+                    except StopIteration:
+                        nxt = None
+                    if nxt is not None:
+                        _submit_one(nxt)
+
+                _write_progress(
+                    batch_dir,
+                    _progress_payload(
+                        batch_id,
+                        config,
+                        stats,
+                        current_sample=result.get("index"),
+                        in_flight=len(future_to_sample),
+                        message="Generating clips…",
+                        started_at=started_at,
+                    ),
+                )
 
     if stats["completed"] >= stats["total"]:
         _write_progress(
@@ -455,13 +501,66 @@ def run_path2d_batch_job(
     plan_path = batch_dir / PLAN_STATE_FILE
     sampler_path = batch_dir / SAMPLER_STATE_FILE
 
+    existing_progress = _read_progress_file(batch_dir / PROGRESS_FILE, batch_id)
+    started_at = existing_progress.get("started_at") or _utc_now()
+
     if resume and plan_path.exists():
+        _write_progress(
+            batch_dir,
+            _progress_payload(
+                batch_id,
+                config,
+                {
+                    "total": int(existing_progress.get("total") or config.total_clips),
+                    "completed": int(existing_progress.get("completed") or 0),
+                    "failed": 0,
+                    "skipped": 0,
+                },
+                message="Loading existing batch plan…",
+                started_at=started_at,
+            ),
+        )
         plan = Path2dBatchPlan.load(plan_path)
         config = plan.config
         batch_id = config.batch_name
     else:
+        _write_progress(
+            batch_dir,
+            _progress_payload(
+                batch_id,
+                config,
+                {
+                    "total": int(config.total_clips),
+                    "completed": 0,
+                    "failed": 0,
+                    "skipped": 0,
+                },
+                message=f"Building path plan for {config.total_clips} clips…",
+                started_at=started_at,
+            ),
+        )
+        _append_log(
+            batch_dir,
+            batch_id,
+            f"[{_utc_now()}] Building path plan for {config.total_clips} clips",
+        )
         catalog = scan_input_catalog(base_dir, config.input_dir)
         plan, bank = build_path2d_batch_plan(config, catalog, base_dir)
+        _write_progress(
+            batch_dir,
+            _progress_payload(
+                batch_id,
+                config,
+                {
+                    "total": len(plan.samples),
+                    "completed": 0,
+                    "failed": 0,
+                    "skipped": 0,
+                },
+                message="Saving batch plan…",
+                started_at=started_at,
+            ),
+        )
         plan.save(plan_path)
         bank.save(sampler_path)
 
@@ -473,12 +572,15 @@ def run_path2d_batch_job(
         "skipped": 0,
     }
 
-    existing_progress = _read_progress_file(batch_dir / PROGRESS_FILE, batch_id)
-    started_at = existing_progress.get("started_at") or _utc_now()
-
     _write_progress(
         batch_dir,
-        _progress_payload(batch_id, config, stats, started_at=started_at),
+        _progress_payload(
+            batch_id,
+            config,
+            stats,
+            message="Plan ready — starting generation…",
+            started_at=started_at,
+        ),
     )
     _append_log(
         batch_dir,
@@ -493,6 +595,7 @@ def run_path2d_batch_job(
         sample for sample in plan.samples if sample.index not in completed
     ]
 
+    finished_ok = False
     try:
         if max(1, int(config.num_workers)) == 1:
             finished_ok = _run_samples_sequential(
@@ -518,6 +621,25 @@ def run_path2d_batch_job(
                 dataset_headers=dataset_headers,
                 started_at=started_at,
             )
+    except Exception as exc:
+        _append_log(
+            batch_dir,
+            batch_id,
+            f"[{_utc_now()}] Batch failed: {exc}\n{traceback.format_exc()}",
+        )
+        _write_progress(
+            batch_dir,
+            _progress_payload(
+                batch_id,
+                config,
+                stats,
+                status="failed",
+                message=str(exc),
+                started_at=started_at,
+                finished_at=_utc_now(),
+            ),
+        )
+        return
     finally:
         clear_source_cache()
 
@@ -549,23 +671,30 @@ def prepare_path2d_batch_workspace(
     batch_dir = _batch_dir(base_dir, config.batch_name, config.output_dir)
     workers = max(1, int(config.num_workers))
     if resume:
+        # Always mark running so the UI poller starts. Leaving status as
+        # failed/completed skips polling (templates only poll when running).
         progress = _read_progress_file(batch_dir / PROGRESS_FILE, config.batch_name)
-        if progress.get("status") == "idle":
-            started_at = _utc_now()
-            progress = {
-                "status": "running",
-                "batch_id": config.batch_name,
-                "total": config.total_clips,
-                "completed": 0,
-                "failed": 0,
-                "skipped": 0,
-                "num_workers": workers,
-                "in_flight": 0,
-                "started_at": started_at,
-            }
-            _write_progress(batch_dir, progress)
-        else:
-            progress["num_workers"] = workers
+        audio_dir = _audio_clips_dir(batch_dir)
+        completed_n = len(scan_completed_indices(audio_dir))
+        total = int(progress.get("total") or 0) or int(config.total_clips)
+        plan_path = batch_dir / PLAN_STATE_FILE
+        if plan_path.exists():
+            try:
+                total = len(Path2dBatchPlan.load(plan_path).samples)
+            except Exception:
+                pass
+        progress = {
+            "status": "running",
+            "batch_id": config.batch_name,
+            "total": total,
+            "completed": completed_n,
+            "failed": 0,
+            "skipped": 0,
+            "num_workers": workers,
+            "in_flight": 0,
+            "started_at": _utc_now(),
+        }
+        _write_progress(batch_dir, progress)
         return progress
 
     if override and batch_dir.exists():

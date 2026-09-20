@@ -23,9 +23,15 @@ from doppler_sim.batch.planner import (
 )
 from doppler_sim.batch.phase1_state import PATH_TYPE_FREE_2D
 from doppler_sim.batch.sampler import SamplerBank
-from doppler_sim.path2d.path_generator import random_curved_path_2d
+from doppler_sim.path2d.path_generator import _path_length, random_curved_path_2d
 from doppler_sim.path2d.synthesis import resample_path_constant_speed
 from doppler_sim.specg.explorer import DEFAULT_BATCH_SPEC_KEYS, SPECG_DEFAULT_FMAX_HZ
+
+# Train-mode clip duration targets (path length / speed + end pads).
+TRAIN_DURATION_MIN_S = 8.0
+TRAIN_DURATION_MAX_S = 12.0
+TRAIN_DURATION_TYPICAL_S = 10.0
+TRAIN_PATH_PAD_S = 0.5  # matches synthesize_path_audio default 2 * 0.25 s
 
 
 @dataclass
@@ -45,6 +51,7 @@ class Path2dBatchConfig:
     spectrogram_png_types: list[str] = field(default_factory=list)
     generate_combined_png: bool = False
     simple_generate: bool = False
+    train_mode: bool = False
     speed_unit: str = "kmph"
     num_workers: int = 10
     specg_fmax_hz: float = SPECG_DEFAULT_FMAX_HZ
@@ -80,6 +87,7 @@ def path2d_batch_config_from_dict(cfg: dict[str, Any]) -> Path2dBatchConfig:
     vehicle_lengths = data.pop("vehicle_lengths", None)
     data.pop("generate_spec_png", None)
     simple_generate = data.pop("simple_generate", False)
+    train_mode = data.pop("train_mode", False)
     speed_unit = data.pop("speed_unit", "mps")
     num_workers = max(1, int(data.pop("num_workers", 10)))
     # Straight-batch fields ignored on resume if present.
@@ -103,6 +111,13 @@ def path2d_batch_config_from_dict(cfg: dict[str, Any]) -> Path2dBatchConfig:
     if vehicle_lengths is not None:
         config.vehicle_lengths = vehicle_lengths
     config.simple_generate = bool(simple_generate)
+    config.train_mode = bool(train_mode)
+    if config.train_mode:
+        # MVP train export: STFT only; no spectrogram PNGs / Phase-1 "simple" extras.
+        config.spectrogram_types = ["stft"]
+        config.spectrogram_png_types = []
+        config.generate_combined_png = False
+        config.simple_generate = False
     config.speed_unit = "kmph" if speed_unit == "kmph" else "mps"
     return config
 
@@ -169,6 +184,82 @@ def _estimate_path_cpa(
     )
 
 
+def _sample_train_target_duration_s(rng: random.Random) -> float:
+    """Sample clip length in [8, 12] s with mode at 10 s."""
+    return float(
+        rng.triangular(TRAIN_DURATION_MIN_S, TRAIN_DURATION_MAX_S, TRAIN_DURATION_TYPICAL_S)
+    )
+
+
+def _retarget_train_mode_duration(
+    path_xy: np.ndarray,
+    speed_mps: float,
+    *,
+    speed_min: float,
+    speed_max: float,
+    mic_x: float,
+    mic_y: float,
+    rng: random.Random,
+) -> tuple[np.ndarray, float, float, float, float]:
+    """Adjust path/speed so clip duration falls in 8–12 s (≈10 s typical).
+
+    Prefer retargeting speed; if that exits the allowed band, uniformly scale the
+    path about the microphone so length matches the clamped speed.
+    """
+    xy = np.asarray(path_xy, dtype=np.float64)
+    length = _path_length(xy)
+    if length < 1e-3:
+        raise ValueError("path length too short for train-mode retargeting")
+
+    target_t = _sample_train_target_duration_s(rng)
+    travel_s = max(target_t - TRAIN_PATH_PAD_S, 1e-3)
+    v_needed = length / travel_s
+    v_lo = float(min(speed_min, speed_max))
+    v_hi = float(max(speed_min, speed_max))
+
+    if v_lo <= v_needed <= v_hi:
+        speed = float(v_needed)
+    else:
+        speed = float(np.clip(v_needed, v_lo, v_hi))
+        length_needed = speed * travel_s
+        scale = length_needed / length
+        mx, my = float(mic_x), float(mic_y)
+        xy = np.column_stack(
+            [
+                mx + (xy[:, 0] - mx) * scale,
+                my + (xy[:, 1] - my) * scale,
+            ]
+        )
+
+    cpa_distance_m, cpa_time_sec, t_out_s = _estimate_path_cpa(
+        xy,
+        speed_mps=speed,
+        mic_x=mic_x,
+        mic_y=mic_y,
+    )
+    # Numerical guard: keep within the train window (± small tolerance).
+    if t_out_s < TRAIN_DURATION_MIN_S - 0.05 or t_out_s > TRAIN_DURATION_MAX_S + 0.05:
+        # Final snap: scale path to exact target at current speed.
+        length = _path_length(xy)
+        travel_s = max(target_t - TRAIN_PATH_PAD_S, 1e-3)
+        scale = (speed * travel_s) / max(length, 1e-9)
+        mx, my = float(mic_x), float(mic_y)
+        xy = np.column_stack(
+            [
+                mx + (xy[:, 0] - mx) * scale,
+                my + (xy[:, 1] - my) * scale,
+            ]
+        )
+        cpa_distance_m, cpa_time_sec, t_out_s = _estimate_path_cpa(
+            xy,
+            speed_mps=speed,
+            mic_x=mic_x,
+            mic_y=mic_y,
+        )
+
+    return xy, float(speed), float(cpa_distance_m), float(cpa_time_sec), float(t_out_s)
+
+
 def build_path2d_batch_plan(
     config: Path2dBatchConfig,
     catalog: VehicleCatalog,
@@ -232,12 +323,25 @@ def build_path2d_batch_plan(
             mic_x=float(config.mic_x),
             mic_y=float(config.mic_y),
         )
-        cpa_distance_m, cpa_time_sec, t_out_s = _estimate_path_cpa(
-            path_xy,
-            speed_mps=float(speed_mps),
-            mic_x=float(config.mic_x),
-            mic_y=float(config.mic_y),
-        )
+
+        if config.train_mode:
+            path_xy, speed_mps, cpa_distance_m, cpa_time_sec, t_out_s = _retarget_train_mode_duration(
+                path_xy,
+                float(speed_mps),
+                speed_min=float(config.speed_mps_min),
+                speed_max=float(config.speed_mps_max),
+                mic_x=float(config.mic_x),
+                mic_y=float(config.mic_y),
+                rng=sample_rng,
+            )
+        else:
+            cpa_distance_m, cpa_time_sec, t_out_s = _estimate_path_cpa(
+                path_xy,
+                speed_mps=float(speed_mps),
+                mic_x=float(config.mic_x),
+                mic_y=float(config.mic_y),
+            )
+
         vehicle_length_m = config.vehicle_lengths.get(sel.vehicle, config.vehicle_length_m)
         t_cpa1_s = clip.t_cpa1_s if clip.t_cpa1_s is not None else config.t_cpa1_s
 
@@ -248,7 +352,7 @@ def build_path2d_batch_plan(
                 source_speed_mps=sel.source_speed_mps,
                 source_path=to_project_relative(base_dir, clip.path),
                 speed_mps=float(speed_mps),
-                path_xy=path_xy.tolist(),
+                path_xy=np.asarray(path_xy, dtype=np.float64).tolist(),
                 mic_x=float(config.mic_x),
                 mic_y=float(config.mic_y),
                 cpa_distance_m=float(cpa_distance_m),

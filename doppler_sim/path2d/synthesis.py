@@ -204,7 +204,8 @@ def synthesize_path_audio(
             r_safe = np.maximum(r, 1e-9)
             v_r = (dx * vx + dy * vy) / r_safe
             v_r = np.where(valid, v_r, np.nan)
-            alpha = float(c) / (float(c) - v_r)
+            # du/dt = c/(c + v_r); v_r = (r · v)/R, receding-positive.
+            alpha = float(c) / (float(c) + v_r)
             reference_quantities = {
                 "t_r": t_r,
                 "R": r,

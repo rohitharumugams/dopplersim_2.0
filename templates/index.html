@@ -993,6 +993,34 @@
           <span>1 kHz</span>
           <span>22.05 kHz</span>
         </div>
+        {% if active_tab in ['doppler', 'path2d'] %}
+        <div class="mt-4">
+          <span class="block text-sm text-slate-300 mb-2">Spectrogram resolution</span>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+              <input
+                type="radio"
+                name="spec_quality"
+                value="sd"
+                class="border-slate-600 bg-slate-950 text-blue-600"
+                {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}
+              >
+              SD
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+              <input
+                type="radio"
+                name="spec_quality"
+                value="hd"
+                class="border-slate-600 bg-slate-950 text-blue-600"
+                {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}
+              >
+              HD
+            </label>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">SD: hop 512 · HD: hop 128 (spectrogram plots only)</p>
+        </div>
+        {% endif %}
         <label class="mt-4 flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -1074,6 +1102,34 @@
             value="{{ freq_max | int }}"
             class="w-full accent-blue-500 mb-3"
           >
+          {% if active_tab in ['doppler', 'path2d'] %}
+          <div class="mb-3">
+            <span class="block text-sm text-slate-300 mb-2">Spectrogram resolution</span>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+                <input
+                  type="radio"
+                  name="spec_quality"
+                  value="sd"
+                  class="border-slate-600 bg-slate-950 text-blue-600"
+                  {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}
+                >
+                SD
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
+                <input
+                  type="radio"
+                  name="spec_quality"
+                  value="hd"
+                  class="border-slate-600 bg-slate-950 text-blue-600"
+                  {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}
+                >
+                HD
+              </label>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">SD: hop 512 · HD: hop 128 (spectrogram plots only)</p>
+          </div>
+          {% endif %}
           <button
             type="submit"
             class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600"
@@ -1165,8 +1221,23 @@
             <img src="{{ plots.uploaded_spectrogram }}" alt="Uploaded spectrogram" class="w-full rounded">
           </figure>
           <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
-            <figcaption class="text-sm text-slate-400 mb-2">Observed vs inverted PSD comparison</figcaption>
-            <img src="{{ plots.psd_comparison }}" alt="PSD comparison" class="w-full rounded">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <figcaption class="text-sm text-slate-400">Observed vs inverted PSD comparison</figcaption>
+              {% if plots.psd_comparison_low %}
+              <div class="inline-flex rounded-lg border border-slate-700 p-0.5" role="group" aria-label="PSD frequency range">
+                <button type="button" class="psd-range-toggle px-3 py-1 text-xs rounded-md bg-blue-600 text-white" data-range="full">Full spectrum</button>
+                <button type="button" class="psd-range-toggle px-3 py-1 text-xs rounded-md text-slate-400" data-range="low">0–500 Hz</button>
+              </div>
+              {% endif %}
+            </div>
+            <img
+              id="psd-comparison-img"
+              src="{{ plots.psd_comparison }}"
+              data-full="{{ plots.psd_comparison }}"
+              {% if plots.psd_comparison_low %}data-low="{{ plots.psd_comparison_low }}"{% endif %}
+              alt="PSD comparison"
+              class="w-full rounded"
+            >
           </figure>
           <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
             <figcaption class="text-sm text-slate-400 mb-2">Observed PSD (raw)</figcaption>
@@ -1226,6 +1297,27 @@
         {% endif %}
       </div>
     </section>
+    {% if plots.psd_comparison_low %}
+    <script>
+      (function () {
+        const img = document.getElementById("psd-comparison-img");
+        if (!img || !img.dataset.low) return;
+        const buttons = document.querySelectorAll(".psd-range-toggle");
+        buttons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const range = btn.dataset.range;
+            img.src = range === "low" ? img.dataset.low : img.dataset.full;
+            buttons.forEach((b) => {
+              const active = b === btn;
+              b.classList.toggle("bg-blue-600", active);
+              b.classList.toggle("text-white", active);
+              b.classList.toggle("text-slate-400", !active);
+            });
+          });
+        });
+      })();
+    </script>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -1818,9 +1910,27 @@
         </div>
       </div>
 
+      {% if active_tab == '2d_whiteboard_batch' %}
       <div class="batch-section" style="margin-top: 0.5rem; margin-bottom: 0.25rem;">
         <label class="batch-spec-check">
-          <input type="checkbox" name="simple_generate" />
+          <input type="checkbox" name="train_mode" id="batch-train-mode" />
+          Train mode (MVP — lean export)
+        </label>
+        <p class="batch-hint" style="margin-top: 0.35rem;">
+          Keeps WAV at 44.1&nbsp;kHz, magnitude <code>stft.npy</code> (22.05&nbsp;kHz,
+          N<sub>FFT</sub>=2048, hop=256, Hann, linear freq; log at training time),
+          frame-level labels aligned to those STFT frames,
+          compact trajectory plot, and <code>simulation_parameters.json</code>.
+          Clip length is retargeted to <strong>8–12&nbsp;s</strong> (≈10&nbsp;s typical).
+          Skips audio-rate state/kinematics and extra spectrograms.
+          Writes <code>phase1_schema.json</code> once at the batch root.
+        </p>
+      </div>
+      {% endif %}
+
+      <div class="batch-section" style="margin-top: 0.5rem; margin-bottom: 0.25rem;">
+        <label class="batch-spec-check">
+          <input type="checkbox" name="simple_generate" id="batch-simple-generate" />
           Phase 1 export (no trajectory plot / kinematics diagnostics)
         </label>
         <p class="batch-hint" style="margin-top: 0.35rem;">
@@ -1828,6 +1938,9 @@
           <code>metadata/</code> (<code>state_frames.npy</code>, derived CPA, etc.),
           plus legacy <code>velocity.npy</code> / <code>cpa.npy</code>.
           Skips trajectory plot and retarded-time <code>kinematics.npy</code> only.
+          {% if active_tab == '2d_whiteboard_batch' %}
+          Ignored when <strong>Train mode</strong> is on.
+          {% endif %}
         </p>
       </div>
 
@@ -1878,6 +1991,24 @@
     (function () {
       const form = document.getElementById("batch-form");
       if (!form) return;
+
+      const trainMode = document.getElementById("batch-train-mode");
+      const simpleGenerate = document.getElementById("batch-simple-generate");
+      function syncTrainModeUi() {
+        if (!trainMode) return;
+        const on = trainMode.checked;
+        if (simpleGenerate) {
+          if (on) simpleGenerate.checked = false;
+          simpleGenerate.disabled = on;
+        }
+        form.querySelectorAll('input[name^="spec_"]').forEach((el) => {
+          el.disabled = on;
+        });
+      }
+      if (trainMode) {
+        trainMode.addEventListener("change", syncTrainModeUi);
+        syncTrainModeUi();
+      }
 
       const warning = document.getElementById("batch-speed-warning");
       const progressPanel = document.getElementById("batch-progress-panel");
@@ -2010,6 +2141,10 @@
         progressText.textContent =
           "Status: " + displayStatus + " — " + safeDone + " / " + safeTotal + " (" + pct + "%)" +
           failedNote + workersNote;
+        const statusMessage = timingPatch?.message;
+        if (statusMessage) {
+          progressText.textContent += " — " + statusMessage;
+        }
         if (progressFill) {
           progressFill.style.width = pct + "%";
           progressFill.classList.toggle("is-complete", status === "completed" || pct >= 100);
@@ -2377,6 +2512,7 @@
       }
 
       const initialProgress = {{ batch_progress|tojson if batch_progress else 'null' }};
+      const batchJustStarted = {{ (batch_message is defined and batch_message)|tojson }};
       const expectedRunStartedAt = initialProgress?.started_at || null;
       const expectedRunTotal = initialProgress?.total || null;
 
@@ -2388,10 +2524,14 @@
 
       if (progressPanel && isBatchProgressActive(initialProgress)) {
         progressPanel.hidden = false;
+        const startStatus =
+          batchJustStarted && initialProgress.status !== "running"
+            ? "running"
+            : initialProgress.status;
         updateBatchProgress(
           initialProgress.completed || 0,
           initialProgress.total || 1,
-          initialProgress.status,
+          startStatus,
           initialProgress.failed || 0,
           {
             startedAt: initialProgress.started_at || null,
@@ -2399,7 +2539,7 @@
             numWorkers: initialProgress.num_workers || 1,
           },
         );
-        if (initialProgress.status === "running") {
+        if (startStatus === "running") {
           const poll = () => {
             const target = activeBatchPollTarget();
             if (!target.name) return;
@@ -2426,10 +2566,15 @@
                   finishedAt: data.finished_at || null,
                   numWorkers: data.num_workers || timingState.numWorkers || 1,
                   inFlight: data.in_flight,
+                  message: data.message || null,
                 });
                 if (data.status === "running") {
                   setTimeout(poll, 1000);
-                } else if (data.status === "completed" || data.status === "cancelled") {
+                } else if (
+                  data.status === "completed" ||
+                  data.status === "cancelled" ||
+                  data.status === "failed"
+                ) {
                   updateBatchTiming();
                 }
               })
