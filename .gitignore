@@ -47,6 +47,8 @@ output/
 # =============================================================================
 static/generated/
 static/plots/
+static/compare/
+static/atoms/
 static/batch_outputs/*
 !static/batch_outputs/.gitkeep
 static/inputs/*
@@ -56,6 +58,14 @@ static/outputs/*
 
 # Transient batch worker cache (not part of datasets)
 **/.signature_cache/
+
+# =============================================================================
+# Paper / figures / local docs (not part of the app)
+# =============================================================================
+misc/
+architecture_diagram.pdf
+architecture_diagram.tex
+templates/presentatio.tex
 
 # =============================================================================
 # LaTeX / presentations / local documents
@@ -100,6 +110,13 @@ benchmarks/test_output/
 /prof.py
 /scripts/generate_kiasportage_multisource_comparision_report.py
 /scripts/generate_kiasportage_multisource_report.py
+/scripts/generate_dopplersim_body_class_comparison.py
+/scripts/generate_kia_distance_emitter_grid.py
+/scripts/generate_kia_special_cases.py
+/scripts/generate_vs13_exactly_matched.py
+/scripts/generate_vs13_speed_grid.py
+/scripts/extract_specg.py
+/scripts/batch_ml_diversity_audit.py
 
 # =============================================================================
 # IDE & editor
