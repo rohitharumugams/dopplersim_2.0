@@ -53,6 +53,8 @@ static/batch_outputs/*
 !static/batch_outputs/.gitkeep
 static/inputs/*
 !static/inputs/.gitkeep
+!static/inputs/*.wav
+!static/inputs/*.txt
 static/outputs/*
 !static/outputs/.gitkeep
 

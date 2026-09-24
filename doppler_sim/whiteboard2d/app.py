@@ -175,6 +175,23 @@ def create_app() -> Flask:
             session[TAB.upload_filename_key] = src.name
             return dest, src.name, None
 
+        if selected_vehicle:
+            return (
+                None,
+                None,
+                f"No source clip found for {selected_vehicle} under static/inputs/. "
+                "Add the WAV (+ sidecar) or upload a file.",
+            )
+
+        available = [o for o in options if o.get("available")]
+        if not available:
+            return (
+                None,
+                None,
+                "No vehicle clips found under static/inputs/. "
+                "Pull the latest branch with source WAVs, or upload a file.",
+            )
+
         return core.resolve_upload_path(TAB)
 
     @app.route("/health")
