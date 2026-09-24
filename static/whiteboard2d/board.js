@@ -15,6 +15,34 @@
   bindFreqSlider("freq_max", "freq-max-value");
   bindFreqSlider("result-freq-max", "result-freq-max-value");
 
+  const vehicleSelect = document.getElementById("catalog_vehicle");
+  const vehicleDataEl = document.getElementById("vehicle-catalog-data");
+  let vehicleCatalog = [];
+  try {
+    vehicleCatalog = vehicleDataEl ? JSON.parse(vehicleDataEl.textContent) : [];
+  } catch (_) {}
+
+  function applyVehicle(id) {
+    const vehicle = vehicleCatalog.find((v) => v.id === id);
+    if (!vehicle || !vehicle.available) return;
+    const unitIsKmh = currentUnit === "kmph";
+    const v1 = document.getElementById("v1");
+    const tCpa1 = document.getElementById("t_cpa1");
+    const lengthEl = document.getElementById("vehicle_length");
+    if (v1 && vehicle.speed_kmh != null) {
+      v1.value = unitIsKmh
+        ? Number(vehicle.speed_kmh.toFixed(2))
+        : Number((vehicle.speed_kmh / KMH_PER_MPS).toFixed(3));
+    }
+    if (tCpa1 && vehicle.t_cpa1 != null) tCpa1.value = vehicle.t_cpa1;
+    if (lengthEl && vehicle.length_m != null) lengthEl.value = vehicle.length_m;
+  }
+
+  if (vehicleSelect) {
+    vehicleSelect.addEventListener("change", () => applyVehicle(vehicleSelect.value));
+    applyVehicle(vehicleSelect.value);
+  }
+
   function updateLabels(unit) {
     const suffix = unit === "kmph" ? "km/h" : "m/s";
     const v1 = document.getElementById("v1-label");

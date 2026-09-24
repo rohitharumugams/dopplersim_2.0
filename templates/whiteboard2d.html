@@ -6,7 +6,7 @@
   <title>DopplerSim — 2D Path Board</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='whiteboard2d/style.css') }}">
 </head>
-<body data-speed-unit="{{ speed_unit | default('mps') }}">
+<body data-speed-unit="{{ speed_unit | default('kmph') }}">
   <header class="hero">
     <div class="hero-inner">
       <div>
@@ -32,16 +32,25 @@
         <aside>
           <section class="panel">
             <h2>Recording</h2>
-            {% if has_upload %}
-            <p class="banner note">Using {{ upload_filename }}. Upload another file to replace it.</p>
-            {% endif %}
-            <label class="lbl" for="audio_file">{% if has_upload %}Replace WAV{% else %}WAV file{% endif %}</label>
-            <input id="audio_file" name="audio_file" type="file" accept=".wav,audio/wav" {% if not has_upload %}required{% endif %}>
+            <label class="lbl" for="catalog_vehicle">Vehicle</label>
+            <select id="catalog_vehicle" name="catalog_vehicle">
+              {% for v in vehicle_options %}
+              <option
+                value="{{ v.id }}"
+                {% if selected_vehicle == v.id %}selected{% endif %}
+                {% if not v.available %}disabled{% endif %}
+              >
+                {{ v.label }}
+              </option>
+              {% endfor %}
+            </select>
+            <label class="lbl" for="audio_file" style="margin-top: 0.75rem;">Or upload a WAV override</label>
+            <input id="audio_file" name="audio_file" type="file" accept=".wav,audio/wav">
           </section>
 
           <section class="panel">
             <h2>Source geometry</h2>
-            <p class="hint">Inverts the upload. Physics always runs in m/s.</p>
+            <p class="hint">Inverts the recording. Physics always runs in m/s.</p>
             <div class="units" role="group" aria-label="Speed unit">
               <label>
                 <input type="radio" name="speed_unit" value="mps" {% if speed_unit != 'kmph' %}checked{% endif %}>
@@ -276,6 +285,7 @@
     {% endif %}
   </main>
 
+  <script type="application/json" id="vehicle-catalog-data">{{ vehicle_catalog_json|safe }}</script>
   <script src="{{ url_for('static', filename='whiteboard2d/board.js') }}"></script>
 </body>
 </html>
