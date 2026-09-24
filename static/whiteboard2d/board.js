@@ -413,9 +413,7 @@
       if (range === "low" && img.dataset.low) img.src = img.dataset.low;
       else if (img.dataset.full) img.src = img.dataset.full;
       document.querySelectorAll(".psd-range-toggle").forEach((b) => {
-        b.classList.toggle("bg-blue-600", b === btn);
-        b.classList.toggle("text-white", b === btn);
-        b.classList.toggle("text-slate-400", b !== btn);
+        b.classList.toggle("is-on", b === btn);
       });
     });
   });

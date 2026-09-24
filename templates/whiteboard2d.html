@@ -4,332 +4,277 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DopplerSim — 2D Path Board</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='whiteboard2d/style.css') }}">
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen" data-speed-unit="{{ speed_unit | default('mps') }}">
-  <div class="max-w-6xl mx-auto px-4 py-10">
-    <header class="mb-10">
-      <p class="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">DopplerSim</p>
-      <h1 class="text-3xl font-bold tracking-tight text-white">2D Path Board</h1>
-      <p class="mt-2 text-slate-400 max-w-3xl">
-        Invert the upload with <strong class="text-slate-300">original parameters</strong>
-        (v₁, h₁, t_CPA₁), then re-render with retarded time and 1/R along the
-        <strong class="text-slate-300">path you draw</strong> on the metered whiteboard.
-        Single clip only.
-      </p>
-    </header>
-
-    {% if error %}
-    <div class="mb-6 rounded-lg border border-red-500/40 bg-red-950/40 px-4 py-3 text-red-200">
-      {{ error }}
+<body data-speed-unit="{{ speed_unit | default('mps') }}">
+  <header class="hero">
+    <div class="hero-inner">
+      <div>
+        <p class="brand">Doppler<span>Sim</span></p>
+        <h1>2D Path Board</h1>
+      </div>
+      <div>
+        <p class="hero-copy">Upload a roadside clip, draw the drive line, and render one pass-by with real Doppler physics.</p>
+        <p class="hero-meta">Single clip · Draw the route · Retarded-time audio</p>
+      </div>
     </div>
+  </header>
+
+  <main class="page">
+    {% if error %}
+    <div class="banner error">{{ error }}</div>
     {% endif %}
 
-    <form id="path2d-form" action="{{ pass_by_urls.generate }}" method="post" enctype="multipart/form-data" class="space-y-8">
+    <form id="path2d-form" action="{{ pass_by_urls.generate }}" method="post" enctype="multipart/form-data">
       <input type="hidden" name="path_json" id="path_json" value="">
 
-      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Input Recording</h2>
-        {% if has_upload %}
-        <div class="mb-4 rounded-lg border border-blue-500/30 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
-          Using saved clip: <span class="font-medium text-white">{{ upload_filename }}</span>
-          <span class="block mt-1 text-blue-300/80">Upload a new file below to replace it, or change parameters and generate again.</span>
-        </div>
-        {% endif %}
-        <label class="block text-sm text-slate-300 mb-2" for="audio_file">
-          {% if has_upload %}Replace WAV (optional){% else %}Upload WAV{% endif %}
-        </label>
-        <input
-          id="audio_file"
-          name="audio_file"
-          type="file"
-          accept=".wav,audio/wav"
-          {% if not has_upload %}required{% endif %}
-          class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-500"
-        >
-      </section>
+      <div class="layout">
+        <aside>
+          <section class="panel">
+            <h2>Recording</h2>
+            {% if has_upload %}
+            <p class="banner note">Using {{ upload_filename }}. Upload another file to replace it.</p>
+            {% endif %}
+            <label class="lbl" for="audio_file">{% if has_upload %}Replace WAV{% else %}WAV file{% endif %}</label>
+            <input id="audio_file" name="audio_file" type="file" accept=".wav,audio/wav" {% if not has_upload %}required{% endif %}>
+          </section>
 
-      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-        <h2 class="text-lg font-semibold text-white mb-1">Speed Units</h2>
-        <p class="text-xs text-slate-500 mb-4">Display only — physics always uses m/s internally.</p>
-        <div class="inline-flex rounded-lg border border-slate-700 p-1" role="group" aria-label="Speed unit">
-          <label class="cursor-pointer">
-            <input type="radio" name="speed_unit" value="mps" class="peer sr-only" {% if speed_unit != 'kmph' %}checked{% endif %}>
-            <span class="block rounded-md px-4 py-2 text-sm text-slate-400 peer-checked:bg-blue-600 peer-checked:text-white">m/s</span>
-          </label>
-          <label class="cursor-pointer">
-            <input type="radio" name="speed_unit" value="kmph" class="peer sr-only" {% if speed_unit == 'kmph' %}checked{% endif %}>
-            <span class="block rounded-md px-4 py-2 text-sm text-slate-400 peer-checked:bg-blue-600 peer-checked:text-white">km/h</span>
-          </label>
-        </div>
-      </section>
+          <section class="panel">
+            <h2>Source geometry</h2>
+            <p class="hint">Inverts the upload. Physics always runs in m/s.</p>
+            <div class="units" role="group" aria-label="Speed unit">
+              <label>
+                <input type="radio" name="speed_unit" value="mps" {% if speed_unit != 'kmph' %}checked{% endif %}>
+                <span>m/s</span>
+              </label>
+              <label>
+                <input type="radio" name="speed_unit" value="kmph" {% if speed_unit == 'kmph' %}checked{% endif %}>
+                <span>km/h</span>
+              </label>
+            </div>
+            <div class="fields" style="margin-top: 0.75rem;">
+              <div class="field">
+                <label class="lbl" for="v1" id="v1-label">Speed v₁ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+                <input id="v1" name="v1" type="number" step="any" value="{{ v1_display }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="h1">CPA distance h₁ (m)</label>
+                <input id="h1" name="h1" type="number" step="any" value="{{ params.h1 if params else 10 }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="t_cpa1">CPA time t_CPA₁ (s)</label>
+                <input id="t_cpa1" name="t_cpa1" type="number" step="any" value="{{ params.t_cpa1 if params else 2 }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="vehicle_length">Length L (m)</label>
+                <input id="vehicle_length" name="vehicle_length" type="number" step="any" value="{{ params.vehicle_length if params else 4.5 }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="num_emitters">Emitters N</label>
+                <input id="num_emitters" name="num_emitters" type="number" min="1" step="1" value="{{ params.num_emitters if params else 3 }}">
+              </div>
+            </div>
+          </section>
 
-      <div class="grid md:grid-cols-2 gap-6">
-        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-          <h2 class="text-lg font-semibold text-white mb-1">Original Pass-By Parameters</h2>
-          <p class="text-xs text-slate-500 mb-4">Used to invert Doppler and 1/R from the upload before synthesis.</p>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="v1" id="v1-label">Speed v₁ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
-              <input id="v1" name="v1" type="number" step="any" value="{{ v1_display }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          <section class="panel">
+            <h2>Plots</h2>
+            <p class="hint">Display only. Audio stays the same.</p>
+            <label class="lbl" for="freq_max">Frequency limit <span id="freq-max-value">{{ freq_max | default(10000) | int }}</span> Hz</label>
+            <input id="freq_max" name="freq_max" type="range" min="1000" max="22050" step="250" value="{{ freq_max | default(10000) | int }}">
+            <div class="checks" style="margin-top: 0.7rem;">
+              <label>
+                <input type="radio" name="spec_quality" value="sd" {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}>
+                SD
+              </label>
+              <label>
+                <input type="radio" name="spec_quality" value="hd" {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}>
+                HD
+              </label>
             </div>
-            <div>
-              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="h1">CPA distance h₁ (m)</label>
-              <input id="h1" name="h1" type="number" step="any" value="{{ params.h1 if params else 10 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
-            </div>
-            <div>
-              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="t_cpa1">CPA time t_CPA₁ (s)</label>
-              <input id="t_cpa1" name="t_cpa1" type="number" step="any" value="{{ params.t_cpa1 if params else 2 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+            <label class="check" style="margin-top: 0.7rem;">
+              <input type="checkbox" name="include_reassigned" {% if include_reassigned %}checked{% endif %}>
+              <span>Include reassigned spectrograms</span>
+            </label>
+          </section>
+
+          <button type="submit" class="primary">Generate clip</button>
+        </aside>
+
+        <section class="panel stage">
+          <div class="stage-head">
+            <h2>Path <span class="unit">meters</span></h2>
+            <div class="tools">
+              <span id="path2d-stats">Path length: 0.0 m</span>
+              <button type="button" id="path2d-undo">Undo</button>
+              <button type="button" id="path2d-clear">Clear</button>
             </div>
           </div>
-        </section>
-
-        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-          <h2 class="text-lg font-semibold text-white mb-4">Vehicle Model</h2>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="vehicle_length">Length L (m)</label>
-              <input id="vehicle_length" name="vehicle_length" type="number" step="any" value="{{ params.vehicle_length if params else 4.5 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
-            </div>
-            <div>
-              <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="num_emitters">Emitters N</label>
-              <input id="num_emitters" name="num_emitters" type="number" min="1" step="1" value="{{ params.num_emitters if params else 3 }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
+          <div class="board">
+            <canvas id="path2d-canvas" width="900" height="640"></canvas>
+          </div>
+          <div class="stage-foot">
+            <p class="hint" style="margin: 0 0 0.7rem;">Drag to draw the drive line. Grid is 10 m / 2 m. Cross = mic. Duration = path length ÷ speed.</p>
+            <div class="row3">
+              <div class="field">
+                <label class="lbl" for="v2" id="v2-label">Speed along path v₂ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
+                <input id="v2" name="v2" type="number" step="any" value="{{ v2_display }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="mic_x">Mic x (m)</label>
+                <input id="mic_x" name="mic_x" type="number" step="any" value="0">
+              </div>
+              <div class="field">
+                <label class="lbl" for="mic_y">Mic y (m)</label>
+                <input id="mic_y" name="mic_y" type="number" step="any" value="0">
+              </div>
             </div>
           </div>
+          <input type="hidden" name="h2" value="{{ params.h2 if params else 8 }}">
+          <input type="hidden" name="t_cpa2" value="{{ params.t_cpa2 if params else 2.5 }}">
+          <input type="hidden" name="t_out" value="{{ params.t_out if params else 6 }}">
         </section>
       </div>
-
-      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h2 class="text-lg font-semibold text-white">Render path whiteboard <span class="text-slate-400 text-sm font-normal">(meters)</span></h2>
-          <div class="flex flex-wrap gap-2 text-sm">
-            <button type="button" id="path2d-clear" class="rounded-md border border-slate-600 px-3 py-1.5 text-slate-200 hover:bg-slate-800">Clear</button>
-            <button type="button" id="path2d-undo" class="rounded-md border border-slate-600 px-3 py-1.5 text-slate-200 hover:bg-slate-800">Undo stroke</button>
-            <span id="path2d-stats" class="self-center text-slate-400 ml-1">Path length: 0.0 m</span>
-          </div>
-        </div>
-        <div class="overflow-auto rounded-lg border border-slate-700 bg-white p-2">
-          <canvas id="path2d-canvas" width="900" height="640" class="mx-auto block cursor-crosshair touch-none"></canvas>
-        </div>
-        <p class="mt-3 text-xs text-slate-500">
-          Drag to draw the vehicle path. Major grid 10&nbsp;m, minor 2&nbsp;m. Black cross = microphone.
-          Speed along the path is v₂ below. Output duration follows path length / speed.
-        </p>
-        <div class="grid md:grid-cols-3 gap-4 mt-4">
-          <div>
-            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="v2" id="v2-label">Speed along path v₂ ({% if speed_unit == 'kmph' %}km/h{% else %}m/s{% endif %})</label>
-            <input id="v2" name="v2" type="number" step="any" value="{{ v2_display }}" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="mic_x">Mic x (m)</label>
-            <input id="mic_x" name="mic_x" type="number" step="any" value="0" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
-          </div>
-          <div>
-            <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1" for="mic_y">Mic y (m)</label>
-            <input id="mic_y" name="mic_y" type="number" step="any" value="0" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2">
-          </div>
-        </div>
-        <input type="hidden" name="h2" value="{{ params.h2 if params else 8 }}">
-        <input type="hidden" name="t_cpa2" value="{{ params.t_cpa2 if params else 2.5 }}">
-        <input type="hidden" name="t_out" value="{{ params.t_out if params else 6 }}">
-      </section>
-
-      <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-        <h2 class="text-lg font-semibold text-white mb-1">Plot Settings</h2>
-        <p class="text-xs text-slate-500 mb-4">Display only — does not affect audio synthesis.</p>
-        <label class="block text-sm text-slate-300 mb-2" for="freq_max">
-          Spectrogram frequency limit: <span id="freq-max-value">{{ freq_max | default(10000) | int }}</span> Hz
-        </label>
-        <input
-          id="freq_max"
-          name="freq_max"
-          type="range"
-          min="1000"
-          max="22050"
-          step="250"
-          value="{{ freq_max | default(10000) | int }}"
-          class="w-full accent-blue-500"
-        >
-        <div class="flex justify-between text-xs text-slate-500 mt-1">
-          <span>1 kHz</span>
-          <span>22.05 kHz</span>
-        </div>
-        <div class="mt-4">
-          <span class="block text-sm text-slate-300 mb-2">Spectrogram resolution</span>
-          <div class="flex gap-4">
-            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-              <input type="radio" name="spec_quality" value="sd" class="border-slate-600 bg-slate-950 text-blue-600" {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}>
-              SD
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-              <input type="radio" name="spec_quality" value="hd" class="border-slate-600 bg-slate-950 text-blue-600" {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}>
-              HD
-            </label>
-          </div>
-        </div>
-        <label class="mt-4 flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" name="include_reassigned" class="mt-1 rounded border-slate-600 bg-slate-950 text-blue-600" {% if include_reassigned %}checked{% endif %}>
-          <span class="text-sm text-slate-300">
-            Include reassigned spectrograms
-            <span class="block text-xs text-slate-500 mt-0.5">Diagnostic plots only — does not change audio.</span>
-          </span>
-        </label>
-      </section>
-
-      <button type="submit" class="w-full md:w-auto rounded-lg bg-blue-600 px-8 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition">
-        Generate Pass-By Audio from drawn path
-      </button>
     </form>
 
     {% if success %}
-    <section class="mt-12 space-y-8">
+    <section class="results">
       {% if phase1_warning %}
-      <div class="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-amber-200 text-sm">{{ phase1_warning }}</div>
+      <div class="banner error">{{ phase1_warning }}</div>
       {% elif phase1_ok %}
-      <div class="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-4 py-2 text-emerald-300/90 text-xs">
-        Phase 1 package included in Download bundle
-        (<code>phase1/spectrograms/stft.npy</code> ↔ <code>phase1/metadata/polar_state.npy</code>).
-      </div>
+      <div class="banner note">Phase 1 files are included in the download.</div>
       {% endif %}
 
-      <div class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-6">
-        <h2 class="text-xl font-semibold text-emerald-300 mb-4">Generated Audio{% if path_animation_url %} &amp; Path Video{% endif %}</h2>
+      <section class="panel">
+        <h2>Output</h2>
         {% if path_animation_url %}
-        <div class="grid md:grid-cols-2 gap-4 mb-6 items-start">
+        <div class="playback">
           <div>
-            <p class="text-xs text-slate-400 mb-2">Audio (controls the video clock)</p>
-            <audio id="path2d-playback-audio" controls class="w-full" src="{{ audio_url }}"></audio>
+            <p class="lbl">Audio</p>
+            <audio id="path2d-playback-audio" controls src="{{ audio_url }}" style="width: 100%;"></audio>
           </div>
           <div>
-            <p class="text-xs text-slate-400 mb-2">Path video (synced to audio)</p>
-            <div class="rounded-lg border border-slate-700 bg-white overflow-hidden">
-              <canvas id="path2d-playback-canvas" width="640" height="420" class="w-full h-auto block"></canvas>
+            <p class="lbl">Path, synced to the audio</p>
+            <div class="board">
+              <canvas id="path2d-playback-canvas" width="640" height="420"></canvas>
             </div>
           </div>
         </div>
         <script type="application/json" id="path2d-animation-url">{{ path_animation_url|tojson }}</script>
         {% else %}
-        <audio controls class="w-full mb-6" src="{{ audio_url }}"></audio>
+        <audio controls src="{{ audio_url }}" style="width: 100%; margin-bottom: 1rem;"></audio>
         {% endif %}
 
-        <form action="{{ pass_by_urls.update_freq_max }}" method="post" class="mb-6 rounded-lg border border-slate-700/60 bg-slate-950/40 p-4">
-          <label class="block text-sm text-slate-300 mb-2" for="result-freq-max">
-            Spectrogram Y-axis max: <span id="result-freq-max-value">{{ freq_max | int }}</span> Hz
-          </label>
-          <input id="result-freq-max" name="freq_max" type="range" min="1000" max="22050" step="250" value="{{ freq_max | int }}" class="w-full accent-blue-500 mb-3">
-          <div class="mb-3 flex gap-4">
-            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-              <input type="radio" name="spec_quality" value="sd" class="border-slate-600 bg-slate-950 text-blue-600" {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}>
+        <form action="{{ pass_by_urls.update_freq_max }}" method="post" class="panel" style="margin-top: 0.5rem;">
+          <label class="lbl" for="result-freq-max">Spectrogram max <span id="result-freq-max-value">{{ freq_max | int }}</span> Hz</label>
+          <input id="result-freq-max" name="freq_max" type="range" min="1000" max="22050" step="250" value="{{ freq_max | int }}">
+          <div class="checks" style="margin: 0.7rem 0;">
+            <label>
+              <input type="radio" name="spec_quality" value="sd" {% if spec_quality|default('sd') != 'hd' %}checked{% endif %}>
               SD
             </label>
-            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-              <input type="radio" name="spec_quality" value="hd" class="border-slate-600 bg-slate-950 text-blue-600" {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}>
+            <label>
+              <input type="radio" name="spec_quality" value="hd" {% if spec_quality|default('sd') == 'hd' %}checked{% endif %}>
               HD
             </label>
           </div>
-          <button type="submit" class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">Update spectrogram plots</button>
+          <button type="submit">Update plots</button>
         </form>
 
-        <form action="{{ pass_by_urls.download_bundle }}" method="post" class="flex flex-col sm:flex-row gap-3 sm:items-end">
-          <div class="flex-1">
-            <label class="block text-sm text-slate-300 mb-2" for="bundle_name">Export file name</label>
-            <input id="bundle_name" name="bundle_name" type="text" placeholder="my_path2d_export" class="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+        <form action="{{ pass_by_urls.download_bundle }}" method="post" class="export">
+          <div class="field">
+            <label class="lbl" for="bundle_name">Export name</label>
+            <input id="bundle_name" name="bundle_name" type="text" placeholder="path_board_export">
           </div>
-          <button type="submit" class="inline-flex items-center justify-center rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">
-            Download all (ZIP)
-          </button>
+          <button type="submit">Download ZIP</button>
         </form>
-      </div>
+      </section>
 
-      <div>
-        <h2 class="text-xl font-semibold text-white mb-4">Analysis Plots</h2>
-        <div class="grid md:grid-cols-2 gap-6">
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Uploaded waveform</figcaption>
-            <img src="{{ plots.uploaded_waveform }}" alt="Uploaded waveform" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Uploaded spectrogram</figcaption>
-            <img src="{{ plots.uploaded_spectrogram }}" alt="Uploaded spectrogram" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <figcaption class="text-sm text-slate-400">Observed vs inverted PSD comparison</figcaption>
-              {% if plots.psd_comparison_low %}
-              <div class="inline-flex rounded-lg border border-slate-700 p-0.5" role="group">
-                <button type="button" class="psd-range-toggle px-3 py-1 text-xs rounded-md bg-blue-600 text-white" data-range="full">Full spectrum</button>
-                <button type="button" class="psd-range-toggle px-3 py-1 text-xs rounded-md text-slate-400" data-range="low">0–500 Hz</button>
-              </div>
-              {% endif %}
+      <h2 style="font-size: 1.4rem; margin: 0 0 0.7rem;">Plots</h2>
+      <div class="plots">
+        <figure>
+          <figcaption>Uploaded waveform</figcaption>
+          <img src="{{ plots.uploaded_waveform }}" alt="Uploaded waveform">
+        </figure>
+        <figure>
+          <figcaption>Uploaded spectrogram</figcaption>
+          <img src="{{ plots.uploaded_spectrogram }}" alt="Uploaded spectrogram">
+        </figure>
+        <figure class="span2">
+          <div class="caprow">
+            <figcaption>Observed vs inverted PSD</figcaption>
+            {% if plots.psd_comparison_low %}
+            <div class="seg" role="group">
+              <button type="button" class="psd-range-toggle is-on" data-range="full">Full</button>
+              <button type="button" class="psd-range-toggle" data-range="low">0–500 Hz</button>
             </div>
-            <img
-              id="psd-comparison-img"
-              src="{{ plots.psd_comparison }}"
-              data-full="{{ plots.psd_comparison }}"
-              {% if plots.psd_comparison_low %}data-low="{{ plots.psd_comparison_low }}"{% endif %}
-              alt="PSD comparison"
-              class="w-full rounded"
-            >
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Observed PSD (raw)</figcaption>
-            <img src="{{ plots.observed_psd }}" alt="Observed PSD" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Intrinsic PSD (inverted)</figcaption>
-            <img src="{{ plots.intrinsic_psd }}" alt="Intrinsic PSD" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
-            <figcaption class="text-sm text-slate-400 mb-2">Inverted intrinsic spectrogram</figcaption>
-            <img src="{{ plots.inverted_spectrogram }}" alt="Inverted spectrogram" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Vehicle geometry</figcaption>
-            <img src="{{ plots.vehicle_geometry }}" alt="Vehicle geometry" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Drawn path / observer geometry</figcaption>
-            <img src="{{ plots.observer_geometry }}" alt="Observer geometry" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Retarded time vs observer time</figcaption>
-            <img src="{{ plots.retarded_time }}" alt="Retarded time" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Radial velocity vs time</figcaption>
-            <img src="{{ plots.radial_velocity }}" alt="Radial velocity" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Doppler factor vs time</figcaption>
-            <img src="{{ plots.doppler_factor }}" alt="Doppler factor" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Propagation distance vs time</figcaption>
-            <img src="{{ plots.propagation_distance }}" alt="Propagation distance" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-            <figcaption class="text-sm text-slate-400 mb-2">Generated waveform</figcaption>
-            <img src="{{ plots.generated_waveform }}" alt="Generated waveform" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-slate-800 bg-slate-900/40 p-3 md:col-span-2">
-            <figcaption class="text-sm text-slate-400 mb-2">Generated spectrogram</figcaption>
-            <img src="{{ plots.generated_spectrogram }}" alt="Generated spectrogram" class="w-full rounded">
-          </figure>
-          {% if plots.uploaded_reassigned %}
-          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
-            <figcaption class="text-sm text-amber-200/80 mb-2">Uploaded reassigned spectrogram</figcaption>
-            <img src="{{ plots.uploaded_reassigned }}" alt="Uploaded reassigned" class="w-full rounded">
-          </figure>
-          <figure class="rounded-xl border border-amber-500/30 bg-slate-900/40 p-3 md:col-span-2">
-            <figcaption class="text-sm text-amber-200/80 mb-2">Generated reassigned spectrogram</figcaption>
-            <img src="{{ plots.generated_reassigned }}" alt="Generated reassigned" class="w-full rounded">
-          </figure>
-          {% endif %}
-        </div>
+            {% endif %}
+          </div>
+          <img
+            id="psd-comparison-img"
+            src="{{ plots.psd_comparison }}"
+            data-full="{{ plots.psd_comparison }}"
+            {% if plots.psd_comparison_low %}data-low="{{ plots.psd_comparison_low }}"{% endif %}
+            alt="PSD comparison"
+          >
+        </figure>
+        <figure>
+          <figcaption>Observed PSD</figcaption>
+          <img src="{{ plots.observed_psd }}" alt="Observed PSD">
+        </figure>
+        <figure>
+          <figcaption>Intrinsic PSD</figcaption>
+          <img src="{{ plots.intrinsic_psd }}" alt="Intrinsic PSD">
+        </figure>
+        <figure class="span2">
+          <figcaption>Inverted spectrogram</figcaption>
+          <img src="{{ plots.inverted_spectrogram }}" alt="Inverted spectrogram">
+        </figure>
+        <figure>
+          <figcaption>Vehicle geometry</figcaption>
+          <img src="{{ plots.vehicle_geometry }}" alt="Vehicle geometry">
+        </figure>
+        <figure>
+          <figcaption>Drawn path</figcaption>
+          <img src="{{ plots.observer_geometry }}" alt="Observer geometry">
+        </figure>
+        <figure>
+          <figcaption>Retarded time</figcaption>
+          <img src="{{ plots.retarded_time }}" alt="Retarded time">
+        </figure>
+        <figure>
+          <figcaption>Radial velocity</figcaption>
+          <img src="{{ plots.radial_velocity }}" alt="Radial velocity">
+        </figure>
+        <figure>
+          <figcaption>Doppler factor</figcaption>
+          <img src="{{ plots.doppler_factor }}" alt="Doppler factor">
+        </figure>
+        <figure>
+          <figcaption>Propagation distance</figcaption>
+          <img src="{{ plots.propagation_distance }}" alt="Propagation distance">
+        </figure>
+        <figure>
+          <figcaption>Generated waveform</figcaption>
+          <img src="{{ plots.generated_waveform }}" alt="Generated waveform">
+        </figure>
+        <figure class="span2">
+          <figcaption>Generated spectrogram</figcaption>
+          <img src="{{ plots.generated_spectrogram }}" alt="Generated spectrogram">
+        </figure>
+        {% if plots.uploaded_reassigned %}
+        <figure class="span2">
+          <figcaption>Uploaded reassigned spectrogram</figcaption>
+          <img src="{{ plots.uploaded_reassigned }}" alt="Uploaded reassigned">
+        </figure>
+        <figure class="span2">
+          <figcaption>Generated reassigned spectrogram</figcaption>
+          <img src="{{ plots.generated_reassigned }}" alt="Generated reassigned">
+        </figure>
+        {% endif %}
       </div>
     </section>
     {% endif %}
-  </div>
+  </main>
 
   <script src="{{ url_for('static', filename='whiteboard2d/board.js') }}"></script>
 </body>
