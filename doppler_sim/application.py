@@ -2,6 +2,7 @@
 
 Version 2: PSD is estimated by inverting observed Doppler (f_src = f_obs/α) and
 geometric attenuation (×R) using the original pass-by parameters (v₁, h₁, t_CPA₁).
+Optional air absorption β(f) is undone in that same STFT step when supplied.
 The inverted intrinsic spectrum drives synthesis; propagation re-applies exact
 retarded-time physics so Doppler emerges from s_obs(t) = s_src(t_r(t)) / R(t).
 """
@@ -163,9 +164,13 @@ def invert_stft_frame_to_source_power(
     freqs: np.ndarray,
     alpha: float,
     distance: float,
+    air_undo: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Undo pressure attenuation (×R) and Doppler (f_src = f_obs / α, α = c/(c+v_r))."""
-    magnitude_src = np.abs(stft_frame) * distance
+    """Undo air absorption, geometric spreading (×R), then Doppler (f_src = f_obs / α)."""
+    magnitude = np.abs(stft_frame)
+    if air_undo is not None:
+        magnitude = magnitude * air_undo
+    magnitude_src = magnitude * distance
     f_src = freqs / alpha
     return np.interp(freqs, f_src, magnitude_src**2, left=0.0, right=0.0)
 
@@ -178,19 +183,26 @@ def invert_stft_to_source_spectrogram(
     h: float,
     t_cpa: float,
     x0: float,
+    air_beta: np.ndarray | None = None,
+    max_air_undo_db: float = 30.0,
 ) -> np.ndarray:
     quantities = compute_propagation_quantities(times, v, h, x0, t_cpa)
     valid = np.isfinite(quantities["t_r"]) & (quantities["R"] > 0.0)
+    undo_cap = float(max_air_undo_db) / 8.685889638065037
 
     source_spectrogram = np.zeros_like(stft, dtype=float)
     for frame_idx in range(stft.shape[1]):
         if not valid[frame_idx]:
             continue
+        air_undo = None
+        if air_beta is not None:
+            air_undo = np.exp(np.minimum(air_beta * float(quantities["R"][frame_idx]), undo_cap))
         source_spectrogram[:, frame_idx] = invert_stft_frame_to_source_power(
             stft[:, frame_idx],
             freqs,
             float(quantities["alpha"][frame_idx]),
             float(quantities["R"][frame_idx]),
+            air_undo=air_undo,
         )
     return source_spectrogram
 
@@ -200,6 +212,8 @@ def estimate_psd_inverted(
     freqs: np.ndarray,
     times: np.ndarray,
     params: RenderParams,
+    air_beta: np.ndarray | None = None,
+    max_air_undo_db: float = 30.0,
 ) -> np.ndarray:
     """Estimate intrinsic source PSD by inverting propagation per emitter, then averaging."""
     offsets = emitter_offsets(params.vehicle_length, params.num_emitters)
@@ -214,6 +228,8 @@ def estimate_psd_inverted(
             params.h1,
             params.t_cpa1,
             float(x0),
+            air_beta=air_beta,
+            max_air_undo_db=max_air_undo_db,
         )
         valid_frames = np.any(source_spectrogram > 0.0, axis=0)
         if np.any(valid_frames):
@@ -230,10 +246,14 @@ def estimate_source_signature(
     audio_mono: np.ndarray,
     sr: int,
     params: RenderParams,
+    air_beta: np.ndarray | None = None,
+    max_air_undo_db: float = 30.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     stft, freqs, times = compute_stft(audio_mono, sr)
     psd_observed = estimate_psd_observed(stft)
-    psd_inverted = estimate_psd_inverted(stft, freqs, times, params)
+    psd_inverted = estimate_psd_inverted(
+        stft, freqs, times, params, air_beta=air_beta, max_air_undo_db=max_air_undo_db
+    )
     return freqs, psd_observed, psd_inverted, stft, times
 
 

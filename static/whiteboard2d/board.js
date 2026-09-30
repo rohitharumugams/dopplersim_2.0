@@ -35,13 +35,39 @@
         : Number((vehicle.speed_kmh / KMH_PER_MPS).toFixed(3));
     }
     if (tCpa1 && vehicle.t_cpa1 != null) tCpa1.value = vehicle.t_cpa1;
-    if (lengthEl && vehicle.length_m != null) lengthEl.value = vehicle.length_m;
+    if (lengthEl) {
+      const geomL = vehicle.geometry && vehicle.geometry.dims && vehicle.geometry.dims.L;
+      if (geomL != null) lengthEl.value = geomL;
+      else if (vehicle.length_m != null) lengthEl.value = vehicle.length_m;
+    }
+    if (typeof window.renderVehicleSchematic === "function") {
+      window.renderVehicleSchematic(vehicle);
+    }
   }
 
   if (vehicleSelect) {
     vehicleSelect.addEventListener("change", () => applyVehicle(vehicleSelect.value));
     applyVehicle(vehicleSelect.value);
   }
+
+  const micHeightField = document.getElementById("mic-height-field");
+  const emitterCountField = document.getElementById("emitter-count-field");
+  const layoutHint = document.getElementById("layout-hint");
+  function syncEmitterLayout() {
+    const selected = document.querySelector('input[name="emitter_layout"]:checked');
+    const body = selected && selected.value === "body";
+    if (micHeightField) micHeightField.hidden = !body;
+    if (emitterCountField) emitterCountField.hidden = body;
+    if (layoutHint) {
+      layoutHint.textContent = body
+        ? "Inverts and renders the six body sources in 3D: four tire patches, the engine, and the exhaust."
+        : "Spaces N copies along the car, for both the invert and the render.";
+    }
+  }
+  document.querySelectorAll('input[name="emitter_layout"]').forEach((radio) => {
+    radio.addEventListener("change", syncEmitterLayout);
+  });
+  syncEmitterLayout();
 
   function updateLabels(unit) {
     const suffix = unit === "kmph" ? "km/h" : "m/s";
@@ -404,10 +430,26 @@
       ctx.moveTo(mx, my - 7);
       ctx.lineTo(mx, my + 7);
       ctx.stroke();
-      ctx.fillStyle = "#dc2626";
-      ctx.beginPath();
-      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
-      ctx.fill();
+      const emitters = anim.emitters || [];
+      if (emitters.length) {
+        emitters.forEach((em) => {
+          const ex = em.x[i] + a * (em.x[i1] - em.x[i]);
+          const ey = em.y[i] + a * (em.y[i1] - em.y[i]);
+          const [px, py] = toCanvas(ex, ey);
+          ctx.fillStyle = em.color || "#dc2626";
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          ctx.arc(px, py, em.kind === "line" ? 4.5 : 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+      } else {
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
       ctx.fillStyle = "#334155";
       ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
@@ -424,10 +466,31 @@
     audio.addEventListener("timeupdate", () => {
       if (audio.paused) drawAt(audio.currentTime || 0);
     });
+    function showEmitterLegend(data) {
+      const legend = document.getElementById("path2d-emitter-legend");
+      if (!legend) return;
+      const emitters = (data && data.emitters) || [];
+      if (!emitters.length) {
+        legend.hidden = true;
+        return;
+      }
+      const seen = [];
+      const items = [];
+      emitters.forEach((em) => {
+        const key = em.kind || em.name;
+        if (seen.indexOf(key) >= 0) return;
+        seen.push(key);
+        const label = key === "tire" ? "Tires" : key === "engine" ? "Engine" : key === "exhaust" ? "Exhaust" : key === "line" ? "Emitters" : em.name;
+        items.push('<span><i style="background:' + (em.color || "#dc2626") + '"></i>' + label + "</span>");
+      });
+      legend.innerHTML = items.join("");
+      legend.hidden = false;
+    }
     fetch(JSON.parse(urlEl.textContent))
       .then((r) => r.json())
       .then((data) => {
         anim = data;
+        showEmitterLegend(data);
         drawAt(0);
       })
       .catch(() => {});

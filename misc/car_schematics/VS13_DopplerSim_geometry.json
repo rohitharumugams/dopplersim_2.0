@@ -1,0 +1,3629 @@
+[
+  {
+    "vehicle_id": 1,
+    "vehicle": "Citroen C4 Picasso 1.6 HDI 2015",
+    "working_identity": "Citroen C4 Picasso II (B78), phase I, 5-door MPV; working powertrain: BlueHDi 120 S&S BVM6, 1.6 L turbo-diesel, FWD.",
+    "identity_confidence": "High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.428,
+      "W": 1.826,
+      "Wm": 2.117,
+      "H": 1.61,
+      "WB": 2.785,
+      "FT": 1.587,
+      "RT": 1.59,
+      "FO": 0.925,
+      "RO": 0.718,
+      "GC": 0.15
+    },
+    "tire": "205/60R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.3925,
+          0.7935,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31448,
+          0.43456,
+          0.20261
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.3925,
+          -0.7935,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31448,
+          -0.43456,
+          0.20261
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.3925,
+          0.795,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31448,
+          0.43538,
+          0.20261
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.3925,
+          -0.795,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31448,
+          -0.43538,
+          0.20261
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.5525,
+          0.0,
+          0.7
+        ],
+        "normalized_xyz": [
+          0.35061,
+          0.0,
+          0.43478
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.16,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.9125,
+          0.0,
+          0.78
+        ],
+        "normalized_xyz": [
+          0.43191,
+          0.0,
+          0.48447
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.0305,
+          0.0,
+          0.28
+        ],
+        "normalized_xyz": [
+          -0.45856,
+          0.0,
+          0.17391
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.8425,
+          0.0,
+          0.27
+        ],
+        "normalized_xyz": [
+          -0.4161,
+          0.0,
+          0.1677
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.3175,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.52337,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.1105,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.47663,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.913,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.913,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.61
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.1035,
+          0.0,
+          0.805
+        ],
+        "normalized_xyz": [
+          0.02337,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 2,
+    "vehicle": "Kia Sportage 1.6 GDI 2021",
+    "working_identity": "Kia Sportage IV (QL) facelift, European 1.6 GDI 2WD, 6-speed manual, 5-door SUV.",
+    "identity_confidence": "Verified / High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.485,
+      "W": 1.855,
+      "Wm": 2.085,
+      "H": 1.635,
+      "WB": 2.67,
+      "FT": 1.609,
+      "RT": 1.62,
+      "FO": 0.905,
+      "RO": 0.91,
+      "GC": 0.172
+    },
+    "tire": "215/70R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.335,
+          0.8045,
+          0.3537
+        ],
+        "normalized_xyz": [
+          0.29766,
+          0.43369,
+          0.21633
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.335,
+          -0.8045,
+          0.3537
+        ],
+        "normalized_xyz": [
+          0.29766,
+          -0.43369,
+          0.21633
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.335,
+          0.81,
+          0.3537
+        ],
+        "normalized_xyz": [
+          -0.29766,
+          0.43666,
+          0.21633
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.335,
+          -0.81,
+          0.3537
+        ],
+        "normalized_xyz": [
+          -0.29766,
+          -0.43666,
+          0.21633
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.515,
+          0.0,
+          0.75
+        ],
+        "normalized_xyz": [
+          0.33779,
+          0.0,
+          0.45872
+        ],
+        "uncertainty_m": [
+          0.13,
+          0.16,
+          0.11
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.855,
+          0.0,
+          0.84
+        ],
+        "normalized_xyz": [
+          0.4136,
+          0.0,
+          0.51376
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.165,
+          0.0,
+          0.31
+        ],
+        "normalized_xyz": [
+          -0.48272,
+          0.0,
+          0.1896
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.785,
+          0.0,
+          0.3
+        ],
+        "normalized_xyz": [
+          -0.39799,
+          0.0,
+          0.18349
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.24,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.49944,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.245,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.50056,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.9275,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.9275,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.635
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          -0.0025,
+          0.0,
+          0.8175
+        ],
+        "normalized_xyz": [
+          -0.00056,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 3,
+    "vehicle": "Mazda 3 Skyactive 2015",
+    "working_identity": "Mazda3 III (BM), phase I, 1.5 SKYACTIV-G 100, 6MT, FWD. Body style unresolved between 5-door hatchback and 4-door sedan.",
+    "identity_confidence": "High confidence powertrain; Moderate confidence body",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.46,
+      "W": 1.795,
+      "Wm": null,
+      "H": 1.45,
+      "WB": 2.7,
+      "FT": 1.555,
+      "RT": 1.56,
+      "FO": 0.93,
+      "RO": 0.83,
+      "GC": 0.155
+    },
+    "tire": "205/60R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.35,
+          0.7775,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.30269,
+          0.43315,
+          0.22497
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.35,
+          -0.7775,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.30269,
+          -0.43315,
+          0.22497
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.35,
+          0.78,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.30269,
+          0.43454,
+          0.22497
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.35,
+          -0.78,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.30269,
+          -0.43454,
+          0.22497
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.51,
+          0.0,
+          0.61
+        ],
+        "normalized_xyz": [
+          0.33857,
+          0.0,
+          0.42069
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.09
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.85,
+          0.0,
+          0.7
+        ],
+        "normalized_xyz": [
+          0.4148,
+          0.0,
+          0.48276
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.1,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.47085,
+          0.0,
+          0.17931
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.8,
+          0.0,
+          0.25
+        ],
+        "normalized_xyz": [
+          -0.40359,
+          0.0,
+          0.17241
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.28,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.51121,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.18,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.48879,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.8975,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.8975,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.45
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.05,
+          0.0,
+          0.725
+        ],
+        "normalized_xyz": [
+          0.01121,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 4,
+    "vehicle": "Mercedes AMG 550 2006",
+    "working_identity": "Unresolved. Working geometry is conditional on Candidate A: Mercedes-Benz CLS 55 AMG (C219), 2006, 350 kW, automatic, RWD.",
+    "identity_confidence": "Low confidence / unresolved",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.915,
+      "W": 1.873,
+      "Wm": null,
+      "H": 1.389,
+      "WB": 2.854,
+      "FT": 1.593,
+      "RT": 1.603,
+      "FO": 0.891,
+      "RO": 1.17,
+      "GC": 0.12
+    },
+    "tire": "255/35R19",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.427,
+          0.7965,
+          0.3305
+        ],
+        "normalized_xyz": [
+          0.29034,
+          0.42525,
+          0.23798
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.427,
+          -0.7965,
+          0.3305
+        ],
+        "normalized_xyz": [
+          0.29034,
+          -0.42525,
+          0.23798
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.427,
+          0.8015,
+          0.3305
+        ],
+        "normalized_xyz": [
+          -0.29034,
+          0.42792,
+          0.23798
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.427,
+          -0.8015,
+          0.3305
+        ],
+        "normalized_xyz": [
+          -0.29034,
+          -0.42792,
+          0.23798
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.127,
+          0.0,
+          0.55
+        ],
+        "normalized_xyz": [
+          0.2293,
+          0.0,
+          0.39597
+        ],
+        "uncertainty_m": [
+          0.15,
+          0.08,
+          0.09
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.727,
+          0.0,
+          0.66
+        ],
+        "normalized_xyz": [
+          0.35137,
+          0.0,
+          0.47516
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.517,
+          0.0,
+          0.23
+        ],
+        "normalized_xyz": [
+          -0.51211,
+          0.0,
+          0.16559
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.877,
+          0.0,
+          0.24
+        ],
+        "normalized_xyz": [
+          -0.38189,
+          0.0,
+          0.17279
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.318,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.47162,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.597,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.52838,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.9365,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.9365,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.389
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          -0.1395,
+          0.0,
+          0.6945
+        ],
+        "normalized_xyz": [
+          -0.02838,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 5,
+    "vehicle": "Mercedes GLA 200D 2017",
+    "working_identity": "Mercedes-Benz GLA 200 d (X156), 2.1 L diesel, 7G-DCT, FWD; 2017 transition-year facelift status is most likely phase II but not provable from VS13 metadata alone.",
+    "identity_confidence": "High confidence variant; Moderate confidence facelift",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.424,
+      "W": 1.804,
+      "Wm": 2.022,
+      "H": 1.494,
+      "WB": 2.699,
+      "FT": 1.558,
+      "RT": 1.561,
+      "FO": 0.905,
+      "RO": 0.82,
+      "GC": 0.134
+    },
+    "tire": "215/60R17",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.3495,
+          0.779,
+          0.3449
+        ],
+        "normalized_xyz": [
+          0.30504,
+          0.43182,
+          0.23086
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.3495,
+          -0.779,
+          0.3449
+        ],
+        "normalized_xyz": [
+          0.30504,
+          -0.43182,
+          0.23086
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.3495,
+          0.7805,
+          0.3449
+        ],
+        "normalized_xyz": [
+          -0.30504,
+          0.43265,
+          0.23086
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.3495,
+          -0.7805,
+          0.3449
+        ],
+        "normalized_xyz": [
+          -0.30504,
+          -0.43265,
+          0.23086
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.4495,
+          0.0,
+          0.67
+        ],
+        "normalized_xyz": [
+          0.32764,
+          0.0,
+          0.44846
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.8095,
+          0.0,
+          0.76
+        ],
+        "normalized_xyz": [
+          0.40902,
+          0.0,
+          0.5087
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.0895,
+          0.0,
+          0.27
+        ],
+        "normalized_xyz": [
+          -0.47231,
+          0.0,
+          0.18072
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.7995,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.40676,
+          0.0,
+          0.17403
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.2545,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.50961,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.1695,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.49039,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.902,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.902,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.494
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.0425,
+          0.0,
+          0.747
+        ],
+        "normalized_xyz": [
+          0.00961,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 6,
+    "vehicle": "Nissan Qashqai 1.5 DCI 2018",
+    "working_identity": "Nissan Qashqai II (J11) facelift, 1.5 dCi 110, 6MT, 2WD/FWD, 5-door crossover.",
+    "identity_confidence": "Verified / High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.394,
+      "W": 1.806,
+      "Wm": 2.07,
+      "H": 1.59,
+      "WB": 2.646,
+      "FT": 1.56,
+      "RT": 1.56,
+      "FO": 0.917,
+      "RO": 0.831,
+      "GC": 0.18
+    },
+    "tire": "215/60R17",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.323,
+          0.78,
+          0.3449
+        ],
+        "normalized_xyz": [
+          0.30109,
+          0.43189,
+          0.21692
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.323,
+          -0.78,
+          0.3449
+        ],
+        "normalized_xyz": [
+          0.30109,
+          -0.43189,
+          0.21692
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.323,
+          0.78,
+          0.3449
+        ],
+        "normalized_xyz": [
+          -0.30109,
+          0.43189,
+          0.21692
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.323,
+          -0.78,
+          0.3449
+        ],
+        "normalized_xyz": [
+          -0.30109,
+          -0.43189,
+          0.21692
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.463,
+          0.0,
+          0.7
+        ],
+        "normalized_xyz": [
+          0.33295,
+          0.0,
+          0.44025
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.803,
+          0.0,
+          0.79
+        ],
+        "normalized_xyz": [
+          0.41033,
+          0.0,
+          0.49686
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.074,
+          0.0,
+          0.28
+        ],
+        "normalized_xyz": [
+          -0.47201,
+          0.0,
+          0.1761
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.773,
+          0.0,
+          0.27
+        ],
+        "normalized_xyz": [
+          -0.4035,
+          0.0,
+          0.16981
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.24,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.50979,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.154,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.49021,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.903,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.903,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.59
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.043,
+          0.0,
+          0.795
+        ],
+        "normalized_xyz": [
+          0.00979,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 7,
+    "vehicle": "Opel Insignia 2.0 CDTI 2010",
+    "working_identity": "Opel Insignia A, MY2010, 2.0 CDTI 130 PS / 96 kW automatic. Body style unresolved among 4-door sedan, 5-door liftback, and Sports Tourer.",
+    "identity_confidence": "High confidence powertrain; Moderate body",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.83,
+      "W": 1.856,
+      "Wm": 2.084,
+      "H": 1.498,
+      "WB": 2.737,
+      "FT": 1.585,
+      "RT": 1.587,
+      "FO": 0.995,
+      "RO": 1.098,
+      "GC": 0.14
+    },
+    "tire": "225/55R17",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.3685,
+          0.7925,
+          0.3396
+        ],
+        "normalized_xyz": [
+          0.28333,
+          0.42699,
+          0.22674
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.3685,
+          -0.7925,
+          0.3396
+        ],
+        "normalized_xyz": [
+          0.28333,
+          -0.42699,
+          0.22674
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.3685,
+          0.7935,
+          0.3396
+        ],
+        "normalized_xyz": [
+          -0.28333,
+          0.42753,
+          0.22674
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.3685,
+          -0.7935,
+          0.3396
+        ],
+        "normalized_xyz": [
+          -0.28333,
+          -0.42753,
+          0.22674
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.4485,
+          0.0,
+          0.64
+        ],
+        "normalized_xyz": [
+          0.2999,
+          0.0,
+          0.42724
+        ],
+        "uncertainty_m": [
+          0.13,
+          0.16,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.8685,
+          0.0,
+          0.73
+        ],
+        "normalized_xyz": [
+          0.38685,
+          0.0,
+          0.48732
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.3865,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.4941,
+          0.0,
+          0.17356
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.8185,
+          0.0,
+          0.25
+        ],
+        "normalized_xyz": [
+          -0.3765,
+          0.0,
+          0.16689
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.3635,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.48934,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.4665,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.51066,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.928,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.928,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.498
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          -0.0515,
+          0.0,
+          0.749
+        ],
+        "normalized_xyz": [
+          -0.01066,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 8,
+    "vehicle": "Peugeot 208 1.4 HDI 2014",
+    "working_identity": "Peugeot 208 I, 1.4 e-HDi 68, ETG5/robotized manual, FWD. Door count unresolved (3- vs 5-door).",
+    "identity_confidence": "High confidence powertrain; Moderate body",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 3.962,
+      "W": 1.739,
+      "Wm": 2.004,
+      "H": 1.46,
+      "WB": 2.538,
+      "FT": 1.47,
+      "RT": 1.471,
+      "FO": 0.825,
+      "RO": 0.599,
+      "GC": 0.12
+    },
+    "tire": "195/55R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.269,
+          0.735,
+          0.3105
+        ],
+        "normalized_xyz": [
+          0.32029,
+          0.42266,
+          0.21264
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.269,
+          -0.735,
+          0.3105
+        ],
+        "normalized_xyz": [
+          0.32029,
+          -0.42266,
+          0.21264
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.269,
+          0.7355,
+          0.3105
+        ],
+        "normalized_xyz": [
+          -0.32029,
+          0.42294,
+          0.21264
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.269,
+          -0.7355,
+          0.3105
+        ],
+        "normalized_xyz": [
+          -0.32029,
+          -0.42294,
+          0.21264
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.429,
+          0.0,
+          0.59
+        ],
+        "normalized_xyz": [
+          0.36068,
+          0.0,
+          0.40411
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.09
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.709,
+          0.0,
+          0.67
+        ],
+        "normalized_xyz": [
+          0.43135,
+          0.0,
+          0.4589
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -1.788,
+          0.0,
+          0.23
+        ],
+        "normalized_xyz": [
+          -0.45129,
+          0.0,
+          0.15753
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.719,
+          0.0,
+          0.22
+        ],
+        "normalized_xyz": [
+          -0.43387,
+          0.0,
+          0.15068
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.094,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.52852,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -1.868,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.47148,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.8695,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.8695,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.46
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.113,
+          0.0,
+          0.73
+        ],
+        "normalized_xyz": [
+          0.02852,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 9,
+    "vehicle": "Peugeot 3008 1.6 HDI 2013",
+    "working_identity": "Peugeot 3008 I phase I, 1.6 e-HDi 115, EGS6/ETG6 automated manual, FWD, 5-door crossover/MPV.",
+    "identity_confidence": "Verified / High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.365,
+      "W": 1.837,
+      "Wm": 2.113,
+      "H": 1.639,
+      "WB": 2.613,
+      "FT": 1.526,
+      "RT": 1.521,
+      "FO": 0.924,
+      "RO": 0.828,
+      "GC": 0.15
+    },
+    "tire": "215/60R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.3065,
+          0.763,
+          0.3322
+        ],
+        "normalized_xyz": [
+          0.29931,
+          0.41535,
+          0.20268
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.3065,
+          -0.763,
+          0.3322
+        ],
+        "normalized_xyz": [
+          0.29931,
+          -0.41535,
+          0.20268
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.3065,
+          0.7605,
+          0.3322
+        ],
+        "normalized_xyz": [
+          -0.29931,
+          0.41399,
+          0.20268
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.3065,
+          -0.7605,
+          0.3322
+        ],
+        "normalized_xyz": [
+          -0.29931,
+          -0.41399,
+          0.20268
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.4565,
+          0.0,
+          0.69
+        ],
+        "normalized_xyz": [
+          0.33368,
+          0.0,
+          0.42099
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.16,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.7865,
+          0.0,
+          0.78
+        ],
+        "normalized_xyz": [
+          0.40928,
+          0.0,
+          0.4759
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.0545,
+          0.0,
+          0.27
+        ],
+        "normalized_xyz": [
+          -0.47068,
+          0.0,
+          0.16473
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.7565,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.40241,
+          0.0,
+          0.15863
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.2305,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.511,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.1345,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.489,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.9185,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.9185,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.639
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.048,
+          0.0,
+          0.8195
+        ],
+        "normalized_xyz": [
+          0.011,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 10,
+    "vehicle": "Peugeot 307 2.0 HDI 2007",
+    "working_identity": "Peugeot 307 facelift (T6/phase II), 2.0 HDi FAP 136, 6MT, FWD. 3- vs 5-door hatch remains unresolved.",
+    "identity_confidence": "High confidence powertrain; Moderate body",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.212,
+      "W": 1.746,
+      "Wm": null,
+      "H": 1.51,
+      "WB": 2.608,
+      "FT": 1.505,
+      "RT": 1.51,
+      "FO": 0.87,
+      "RO": 0.734,
+      "GC": 0.12
+    },
+    "tire": "205/55R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.304,
+          0.7525,
+          0.316
+        ],
+        "normalized_xyz": [
+          0.30959,
+          0.43099,
+          0.20924
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.304,
+          -0.7525,
+          0.316
+        ],
+        "normalized_xyz": [
+          0.30959,
+          -0.43099,
+          0.20924
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.304,
+          0.755,
+          0.316
+        ],
+        "normalized_xyz": [
+          -0.30959,
+          0.43242,
+          0.20924
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.304,
+          -0.755,
+          0.316
+        ],
+        "normalized_xyz": [
+          -0.30959,
+          -0.43242,
+          0.20924
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.434,
+          0.0,
+          0.61
+        ],
+        "normalized_xyz": [
+          0.34046,
+          0.0,
+          0.40397
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.09
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.764,
+          0.0,
+          0.69
+        ],
+        "normalized_xyz": [
+          0.4188,
+          0.0,
+          0.45695
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -1.958,
+          0.0,
+          0.24
+        ],
+        "normalized_xyz": [
+          -0.46486,
+          0.0,
+          0.15894
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.754,
+          0.0,
+          0.23
+        ],
+        "normalized_xyz": [
+          -0.41643,
+          0.0,
+          0.15232
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.174,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.51614,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.038,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.48386,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.873,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.873,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.51
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.068,
+          0.0,
+          0.755
+        ],
+        "normalized_xyz": [
+          0.01614,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 11,
+    "vehicle": "Renault Captur 1.5 DCI 2015",
+    "working_identity": "Renault Captur I (J87) phase I, Energy dCi 90 EDC, 6-speed dual-clutch, FWD, 5-door.",
+    "identity_confidence": "Verified / High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.122,
+      "W": 1.778,
+      "Wm": null,
+      "H": 1.566,
+      "WB": 2.606,
+      "FT": 1.531,
+      "RT": 1.516,
+      "FO": 0.866,
+      "RO": 0.65,
+      "GC": 0.17
+    },
+    "tire": "205/60R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.303,
+          0.7655,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31611,
+          0.43054,
+          0.2083
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.303,
+          -0.7655,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31611,
+          -0.43054,
+          0.2083
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.303,
+          0.758,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31611,
+          0.42632,
+          0.2083
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.303,
+          -0.758,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31611,
+          -0.42632,
+          0.2083
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.463,
+          0.0,
+          0.66
+        ],
+        "normalized_xyz": [
+          0.35492,
+          0.0,
+          0.42146
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.753,
+          0.0,
+          0.75
+        ],
+        "normalized_xyz": [
+          0.42528,
+          0.0,
+          0.47893
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -1.873,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.45439,
+          0.0,
+          0.16603
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.753,
+          0.0,
+          0.25
+        ],
+        "normalized_xyz": [
+          -0.42528,
+          0.0,
+          0.15964
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.169,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.5262,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -1.953,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.4738,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.889,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.889,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.566
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.108,
+          0.0,
+          0.783
+        ],
+        "normalized_xyz": [
+          0.0262,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 12,
+    "vehicle": "Renault Scenic 1.9 DCI 2010",
+    "working_identity": "Renault Scenic III (J95) phase I, 1.9 dCi 130, 6MT, FWD, standard-wheelbase 5-door MPV.",
+    "identity_confidence": "Verified / High confidence",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.344,
+      "W": 1.845,
+      "Wm": 2.077,
+      "H": 1.678,
+      "WB": 2.703,
+      "FT": 1.546,
+      "RT": 1.547,
+      "FO": 0.885,
+      "RO": 0.757,
+      "GC": 0.12
+    },
+    "tire": "205/60R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.3515,
+          0.773,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31112,
+          0.41897,
+          0.1944
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.3515,
+          -0.773,
+          0.3262
+        ],
+        "normalized_xyz": [
+          0.31112,
+          -0.41897,
+          0.1944
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.3515,
+          0.7735,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31112,
+          0.41924,
+          0.1944
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.3515,
+          -0.7735,
+          0.3262
+        ],
+        "normalized_xyz": [
+          -0.31112,
+          -0.41924,
+          0.1944
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.4815,
+          0.0,
+          0.7
+        ],
+        "normalized_xyz": [
+          0.34105,
+          0.0,
+          0.41716
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.1
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.8315,
+          0.0,
+          0.79
+        ],
+        "normalized_xyz": [
+          0.42162,
+          0.0,
+          0.4708
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.0285,
+          0.0,
+          0.27
+        ],
+        "normalized_xyz": [
+          -0.46697,
+          0.0,
+          0.16091
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.8015,
+          0.0,
+          0.26
+        ],
+        "normalized_xyz": [
+          -0.41471,
+          0.0,
+          0.15495
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.2365,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.51485,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.1085,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.48538,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.9225,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.9225,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.678
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          0.064,
+          0.0,
+          0.839
+        ],
+        "normalized_xyz": [
+          0.01473,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  },
+  {
+    "vehicle_id": 13,
+    "vehicle": "VW Passat B7 1.6 TDI 2011",
+    "working_identity": "Volkswagen Passat B7 (Typ 3C), 1.6 TDI 105 PS / 77 kW manual, FWD. Body style unresolved between sedan and Variant.",
+    "identity_confidence": "High confidence powertrain; Moderate body",
+    "coordinate_system": {
+      "origin": "ground projection at midpoint between front and rear axle centers",
+      "x": "forward",
+      "y": "vehicle left",
+      "z": "up"
+    },
+    "dimensions_m": {
+      "L": 4.769,
+      "W": 1.82,
+      "Wm": 2.062,
+      "H": 1.462,
+      "WB": 2.712,
+      "FT": 1.553,
+      "RT": 1.554,
+      "FO": 0.941,
+      "RO": 1.116,
+      "GC": 0.124
+    },
+    "tire": "205/55R16",
+    "sources_and_geometry": {
+      "FL wheel center": {
+        "xyz_m": [
+          1.356,
+          0.7765,
+          0.316
+        ],
+        "normalized_xyz": [
+          0.28434,
+          0.42665,
+          0.21611
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "FR wheel center": {
+        "xyz_m": [
+          1.356,
+          -0.7765,
+          0.316
+        ],
+        "normalized_xyz": [
+          0.28434,
+          -0.42665,
+          0.21611
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RL wheel center": {
+        "xyz_m": [
+          -1.356,
+          0.777,
+          0.316
+        ],
+        "normalized_xyz": [
+          -0.28434,
+          0.42692,
+          0.21611
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "RR wheel center": {
+        "xyz_m": [
+          -1.356,
+          -0.777,
+          0.316
+        ],
+        "normalized_xyz": [
+          -0.28434,
+          -0.42692,
+          0.21611
+        ],
+        "uncertainty_m": [
+          0.005,
+          0.01,
+          0.015
+        ],
+        "provenance": "B"
+      },
+      "Engine acoustic center": {
+        "xyz_m": [
+          1.456,
+          0.0,
+          0.62
+        ],
+        "normalized_xyz": [
+          0.30531,
+          0.0,
+          0.42408
+        ],
+        "uncertainty_m": [
+          0.12,
+          0.15,
+          0.09
+        ],
+        "provenance": "D"
+      },
+      "Intake acoustic center": {
+        "xyz_m": [
+          1.836,
+          0.0,
+          0.71
+        ],
+        "normalized_xyz": [
+          0.38499,
+          0.0,
+          0.48564
+        ],
+        "uncertainty_m": [
+          0.18,
+          0.65,
+          0.12
+        ],
+        "provenance": "D/E"
+      },
+      "Exhaust outlet acoustic center": {
+        "xyz_m": [
+          -2.392,
+          0.0,
+          0.25
+        ],
+        "normalized_xyz": [
+          -0.50157,
+          0.0,
+          0.171
+        ],
+        "uncertainty_m": [
+          0.08,
+          0.75,
+          0.05
+        ],
+        "provenance": "D/E"
+      },
+      "Rear silencer/muffler": {
+        "xyz_m": [
+          -1.806,
+          0.0,
+          0.24
+        ],
+        "normalized_xyz": [
+          -0.3787,
+          0.0,
+          0.16416
+        ],
+        "uncertainty_m": [
+          0.2,
+          0.45,
+          0.08
+        ],
+        "provenance": "D"
+      },
+      "Front bumper extremity": {
+        "xyz_m": [
+          2.297,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          0.48165,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Rear bumper extremity": {
+        "xyz_m": [
+          -2.472,
+          0.0,
+          null
+        ],
+        "normalized_xyz": [
+          -0.51835,
+          0.0,
+          null
+        ],
+        "uncertainty_m": [
+          0.06,
+          0.0,
+          null
+        ],
+        "provenance": "B/C"
+      },
+      "Left body extremity": {
+        "xyz_m": [
+          0.0,
+          0.91,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Right body extremity": {
+        "xyz_m": [
+          0.0,
+          -0.91,
+          null
+        ],
+        "normalized_xyz": [
+          0.0,
+          -0.5,
+          null
+        ],
+        "uncertainty_m": [
+          0.0,
+          0.015,
+          null
+        ],
+        "provenance": "B"
+      },
+      "Roof maximum": {
+        "xyz_m": [
+          0.0,
+          0.0,
+          1.462
+        ],
+        "normalized_xyz": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "uncertainty_m": [
+          null,
+          null,
+          0.025
+        ],
+        "provenance": "B"
+      },
+      "Approx. geometric center": {
+        "xyz_m": [
+          -0.0875,
+          0.0,
+          0.731
+        ],
+        "normalized_xyz": [
+          -0.01835,
+          0.0,
+          0.5
+        ],
+        "uncertainty_m": [
+          0.1,
+          0.05,
+          0.12
+        ],
+        "provenance": "D"
+      }
+    }
+  }
+]

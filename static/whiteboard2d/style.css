@@ -147,6 +147,104 @@ h1, h2, .display {
   align-items: start;
 }
 
+.recording-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.recording-pick .lbl:not(:first-of-type) {
+  margin-top: 0.75rem;
+}
+
+.schematic-identity {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.schematic-identity strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.schematic {
+  min-width: 0;
+  background: #f7f9fb;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0.45rem 0.5rem 0.4rem;
+}
+
+.schematic-board {
+  display: grid;
+  grid-template-columns: 1.35fr 1.15fr 0.72fr;
+  gap: 0.35rem;
+}
+
+.schematic-view {
+  min-width: 0;
+}
+
+.schematic-view svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.schematic-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin: 0.15rem 0 0;
+  padding: 0.28rem 0.15rem 0.05rem;
+  border-top: 1px solid #e3e9ef;
+  color: var(--asphalt);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.schematic-meta span {
+  color: var(--muted);
+}
+
+.schematic-meta b {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.schematic-legend {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.schematic-legend i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.28rem;
+  border-radius: 50%;
+  vertical-align: 0.05rem;
+}
+
+.schematic-empty {
+  margin: 0;
+  padding: 1.1rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -364,6 +462,11 @@ button[type="submit"]:not(.primary) {
   gap: 0.7rem;
 }
 
+.body-only {
+  margin-top: 0.65rem;
+  max-width: 10rem;
+}
+
 button.primary {
   width: 100%;
   border: 0;
@@ -484,7 +587,9 @@ figure img {
   .layout,
   .playback,
   .plots,
-  .row3 {
+  .row3,
+  .recording-row,
+  .schematic-board {
     grid-template-columns: 1fr;
   }
 

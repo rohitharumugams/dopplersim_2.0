@@ -23,18 +23,149 @@ from flask import Flask, render_template, request, send_file, send_from_director
 
 # Reuse existing helpers — do not edit application.py.
 import doppler_sim.application as core
+from doppler_sim.atmosphere import AIR_N_FFT, Atmosphere
 from doppler_sim.batch.catalog import SourceClip, scan_input_catalog
 from doppler_sim.batch.vehicle_metadata import (
     VEHICLE_METADATA,
     known_length_m,
     vehicle_display_name,
 )
+from doppler_sim.whiteboard2d.body_layout import (
+    body_emitters,
+    linear_emitters,
+    offsets_xyz,
+    pack_propagation,
+    plot_body_diagram,
+    plot_path_emitters,
+    plot_propagation_curves,
+    replot_emitter_views,
+    save_emitter_view,
+    write_emitter_animation,
+)
+from doppler_sim.whiteboard2d.vehicle_schematics import attach_geometry, geometry_for_catalog_id
 
 TEMPLATE = "whiteboard2d.html"
 TAB = core.PASS_BY_PATH2D
 TARGET_SOURCE_KMH = 60.0
 DEFAULT_V2_KMH = 60.0
 KMH_PER_MPS = 3.6
+
+
+def _body_frame_quantities(times, v, h, t_cpa, xyz, mic_z: float) -> dict[str, np.ndarray]:
+    """Straight-pass propagation for one body emitter.
+
+    The microphone is at (0, 0, mic_z). The axle travels on y = h, heading +x,
+    and passes x = 0 at ``t_cpa``. Vehicle +Y is left, so an emitter at y_i
+    sits at world y = h + y_i (a positive h puts the mic on the vehicle's right).
+    With y_i = z_i = mic_z = 0 this is the same model as the 2D invert.
+    """
+    x_i, y_i, z_i = (float(xyz[0]), float(xyz[1]), float(xyz[2]))
+    x0_quadratic = x_i - float(v) * float(t_cpa)
+    h_eff = float(np.hypot(float(h) + y_i, z_i - float(mic_z)))
+    t_r = core.solve_retarded_time(times, float(v), x0_quadratic, h_eff)
+    r = core.SPEED_OF_SOUND * (times - t_r)
+    x_emitter = core.vehicle_center_position(t_r, float(v), float(t_cpa)) + x_i
+    v_r = float(v) * x_emitter / np.maximum(r, 1e-9)
+    alpha = core.SPEED_OF_SOUND / (core.SPEED_OF_SOUND + v_r)
+    bad = ~np.isfinite(t_r) | ~(r > 0.0)
+    return {
+        "t_r": np.where(bad, np.nan, t_r),
+        "R": np.where(bad, np.nan, r),
+        "v_r": np.where(bad, np.nan, v_r),
+        "alpha": np.where(bad, np.nan, alpha),
+    }
+
+
+def _invert_with_quantities(stft, freqs, quantities, air_beta: np.ndarray | None = None, max_air_undo_db: float = 30.0) -> np.ndarray:
+    source = np.zeros_like(stft, dtype=float)
+    valid = np.isfinite(quantities["t_r"]) & (quantities["R"] > 0.0)
+    undo_cap = float(max_air_undo_db) / 8.685889638065037
+    for frame_idx in range(stft.shape[1]):
+        if not valid[frame_idx]:
+            continue
+        air_undo = None
+        if air_beta is not None:
+            air_undo = np.exp(np.minimum(air_beta * float(quantities["R"][frame_idx]), undo_cap))
+        source[:, frame_idx] = core.invert_stft_frame_to_source_power(
+            stft[:, frame_idx],
+            freqs,
+            float(quantities["alpha"][frame_idx]),
+            float(quantities["R"][frame_idx]),
+            air_undo=air_undo,
+        )
+    return source
+
+
+def _estimate_signature(
+    audio,
+    sr,
+    params,
+    emitter_xyz: np.ndarray | None = None,
+    mic_z: float = 0.0,
+    atmosphere: Atmosphere | None = None,
+):
+    """Invert the clip. Body passes each emitter's (x, y, z); Linear uses the stock line."""
+    use_air = atmosphere is not None and atmosphere.enabled
+    if emitter_xyz is None and not use_air:
+        return core.estimate_source_signature(audio, sr, params)
+
+    stft, freqs, times = core.compute_stft(audio, sr)
+    beta = atmosphere.beta(freqs) if use_air else None
+    undo_db = atmosphere.max_undo_db if use_air else 30.0
+    psd_observed = core.estimate_psd_observed(stft)
+    if emitter_xyz is None:
+        psd_inverted = core.estimate_psd_inverted(
+            stft, freqs, times, params, air_beta=beta, max_air_undo_db=undo_db
+        )
+        return freqs, psd_observed, psd_inverted, stft, times
+
+    offsets = np.asarray(emitter_xyz, dtype=np.float64).reshape(-1, 3)
+    if offsets.shape[0] < 1:
+        raise ValueError("Body layout needs at least one emitter to invert the recording.")
+
+    psd_sum = np.zeros(len(freqs), dtype=float)
+    for xyz in offsets:
+        quantities = _body_frame_quantities(
+            times, params.v1, params.h1, params.t_cpa1, xyz, mic_z
+        )
+        source_spectrogram = _invert_with_quantities(
+            stft, freqs, quantities, air_beta=beta, max_air_undo_db=undo_db
+        )
+        valid_frames = np.any(source_spectrogram > 0.0, axis=0)
+        if np.any(valid_frames):
+            psd_sum += np.mean(source_spectrogram[:, valid_frames], axis=1)
+    psd_inverted = np.maximum(psd_sum / float(offsets.shape[0]), 0.0)
+    return freqs, psd_observed, psd_inverted, stft, times
+
+
+def _form_float(name: str, default: float) -> float:
+    try:
+        value = float(request.form.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if np.isfinite(value) else default
+
+
+def _atmosphere_from_request() -> Atmosphere:
+    """Read air settings from the generate form. Other posts keep the defaults."""
+    if request.method == "POST" and "temperature_c" in request.form:
+        return Atmosphere(
+            temperature_c=_form_float("temperature_c", 20.0),
+            relative_humidity_percent=_form_float("relative_humidity_percent", 50.0),
+            pressure_atm=_form_float("pressure_atm", 1.0),
+            enabled=request.form.get("air_absorption") in ("on", "true", "1", "yes"),
+        )
+    return Atmosphere()
+
+
+def _atmosphere_from_meta(meta: dict) -> Atmosphere:
+    saved = meta.get("atmosphere") or {}
+    return Atmosphere(
+        temperature_c=float(saved.get("temperature_c", 20.0)),
+        relative_humidity_percent=float(saved.get("relative_humidity_percent", 50.0)),
+        pressure_atm=float(saved.get("pressure_atm", 1.0)),
+        enabled=bool(saved.get("enabled", True)),
+    )
 
 
 def _nearest_clip(clips: list[SourceClip], target_kmh: float = TARGET_SOURCE_KMH) -> SourceClip:
@@ -68,7 +199,7 @@ def _vehicle_options() -> list[dict[str, Any]]:
                 }
             )
         options.append(entry)
-    return options
+    return attach_geometry(options)
 
 
 def _default_params_from_vehicle(vehicle: dict[str, Any] | None) -> core.RenderParams:
@@ -118,6 +249,9 @@ def create_app() -> Flask:
         spec_quality: str = "sd",
         *,
         selected_vehicle: str | None = None,
+        emitter_layout: str | None = None,
+        mic_z: float | None = None,
+        atmosphere: Atmosphere | None = None,
         **extra,
     ):
         options = _vehicle_options()
@@ -137,16 +271,37 @@ def create_app() -> Flask:
         )
         ctx["vehicle_options"] = options
         ctx["selected_vehicle"] = selected["id"] if selected else ""
+        if emitter_layout is None:
+            emitter_layout = (request.form.get("emitter_layout") or "linear").strip()
+        if emitter_layout not in ("linear", "body"):
+            emitter_layout = "linear"
+        if mic_z is None:
+            try:
+                mic_z = float(request.form.get("mic_z", "1.2"))
+            except (TypeError, ValueError):
+                mic_z = 1.2
+        if not np.isfinite(mic_z):
+            mic_z = 1.2
+        ctx["emitter_layout"] = emitter_layout
+        ctx["mic_z"] = float(mic_z)
+        if atmosphere is None:
+            atmosphere = _atmosphere_from_request()
+        ctx["air_enabled"] = bool(atmosphere.enabled)
+        ctx["temperature_c"] = float(atmosphere.temperature_c)
+        ctx["relative_humidity_percent"] = float(atmosphere.relative_humidity_percent)
+        ctx["pressure_atm"] = float(atmosphere.pressure_atm)
         ctx["vehicle_catalog_json"] = json.dumps(
             [
                 {
                     "id": o["id"],
+                    "label": o["label"],
                     "available": o["available"],
                     "length_m": o["length_m"],
                     "speed_kmh": o.get("speed_kmh"),
                     "t_cpa1": o.get("t_cpa1"),
                     "speed_label": o.get("speed_label"),
                     "filename": o.get("filename"),
+                    "geometry": o.get("geometry"),
                 }
                 for o in options
             ]
@@ -216,6 +371,16 @@ def create_app() -> Flask:
         spec_quality = core.parse_spec_quality()
         spec_hop = core.spec_hop_for_quality(spec_quality)
         selected_vehicle = (request.form.get("catalog_vehicle") or "").strip() or None
+        emitter_layout = (request.form.get("emitter_layout") or "linear").strip()
+        if emitter_layout not in ("linear", "body"):
+            emitter_layout = "linear"
+        try:
+            mic_z = float(request.form.get("mic_z", "1.2"))
+        except (TypeError, ValueError):
+            mic_z = 1.2
+        if not np.isfinite(mic_z):
+            mic_z = 1.2
+        atmosphere = _atmosphere_from_request()
 
         upload_path, upload_filename, upload_error = _resolve_source(selected_vehicle)
         if upload_error:
@@ -281,8 +446,25 @@ def create_app() -> Flask:
         uploaded_sr = sr
 
         try:
-            freqs, psd_observed, psd_inverted, stft, stft_times = core.estimate_source_signature(
-                audio, sr, params
+            geometry = geometry_for_catalog_id(selected_vehicle or "")
+            body_dims = None
+            if emitter_layout == "body":
+                if geometry is None:
+                    raise ValueError("This vehicle has no body geometry, so Body layout cannot be placed.")
+                emitters = body_emitters(geometry)
+                body_dims = geometry["dims"]
+                body_xyz = offsets_xyz(emitters)
+                synth_kwargs = {
+                    "emitter_offsets_xyz": body_xyz,
+                    "mic_z": float(mic_z),
+                }
+            else:
+                emitters = linear_emitters(float(params.vehicle_length), int(params.num_emitters))
+                body_xyz = None
+                synth_kwargs = {}
+
+            freqs, psd_observed, psd_inverted, stft, stft_times = _estimate_signature(
+                audio, sr, params, body_xyz, mic_z=float(mic_z), atmosphere=atmosphere
             )
             del audio
 
@@ -296,6 +478,9 @@ def create_app() -> Flask:
                 mic_xy=(mic_x, mic_y),
                 vehicle_length=float(params.vehicle_length),
                 num_emitters=int(params.num_emitters),
+                air_beta=atmosphere.forward_beta(core.OUTPUT_SR, AIR_N_FFT) if atmosphere.enabled else None,
+                air_n_fft=AIR_N_FFT,
+                **synth_kwargs,
             )
             generated = result["audio"]
             quantities = result["quantities"]
@@ -306,7 +491,7 @@ def create_app() -> Flask:
                 h1=params.h1,
                 t_cpa1=params.t_cpa1,
                 vehicle_length=params.vehicle_length,
-                num_emitters=params.num_emitters,
+                num_emitters=len(emitters) if emitter_layout == "body" else params.num_emitters,
                 v2=float(params.v2),
                 h2=float(result["cpa_distance_m"]),
                 t_cpa2=float(result["cpa_time_sec"]),
@@ -334,13 +519,26 @@ def create_app() -> Flask:
                 include_reassigned=include_reassigned,
                 spec_hop=spec_hop,
             )
-            plots["observer_geometry"] = core._plot_path2d_board(
+            plots["observer_geometry"] = plot_path_emitters(
                 xy,
                 traj,
                 (mic_x, mic_y),
-                plot_dir,
+                emitters,
                 core.PLOT_EXPORT_NAMES["observer_geometry"],
+                plot_dir,
             )
+            propagation = None
+            if emitter_layout == "body" and body_dims is not None:
+                plots["vehicle_geometry"] = plot_body_diagram(
+                    emitters,
+                    body_dims,
+                    core.PLOT_EXPORT_NAMES["vehicle_geometry"],
+                    plot_dir,
+                )
+                propagation = pack_propagation(
+                    traj["t"], emitters, result["emitter_curves"], quantities
+                )
+                plot_propagation_curves(propagation, plot_dir)
 
             core.save_render_state(
                 render_id,
@@ -366,15 +564,36 @@ def create_app() -> Flask:
                 path_trajectory=traj,
                 mic_position=(mic_x, mic_y),
             )
-            core._write_path_animation(
-                render_id,
+            render_dir = core.RENDERS_DIR / render_id
+            write_emitter_animation(
+                render_dir,
                 traj=traj,
                 path_xy=xy,
                 mic_xy=(mic_x, mic_y),
+                emitters=emitters,
             )
-            meta_path = core.RENDERS_DIR / render_id / "meta.json"
+            save_emitter_view(
+                render_dir,
+                layout=emitter_layout,
+                mic_z=float(mic_z) if emitter_layout == "body" else 0.0,
+                mic_xy=(mic_x, mic_y),
+                path_xy=xy,
+                traj=traj,
+                emitters=emitters,
+                dims=body_dims,
+                propagation=propagation,
+            )
+            meta_path = render_dir / "meta.json"
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             meta["has_path_animation"] = True
+            meta["emitter_layout"] = emitter_layout
+            meta["mic_z"] = float(mic_z) if emitter_layout == "body" else 0.0
+            meta["atmosphere"] = {
+                "enabled": bool(atmosphere.enabled),
+                "temperature_c": float(atmosphere.temperature_c),
+                "relative_humidity_percent": float(atmosphere.relative_humidity_percent),
+                "pressure_atm": float(atmosphere.pressure_atm),
+            }
             meta_path.write_text(json.dumps(meta), encoding="utf-8")
         except Exception as exc:
             return _page(
@@ -424,8 +643,22 @@ def create_app() -> Flask:
         meta, params, plots = core.regenerate_plots_from_state(
             render_id, freq_max, spec_quality=spec_quality
         )
+        replot_emitter_views(
+            core.RENDERS_DIR / render_id,
+            core.PLOTS_DIR / render_id,
+            core.PLOT_EXPORT_NAMES["observer_geometry"],
+            core.PLOT_EXPORT_NAMES["vehicle_geometry"],
+        )
         speed_unit = meta.get("speed_unit", "kmph")
-        ctx = _ctx(params, speed_unit, freq_max=freq_max, spec_quality=spec_quality)
+        ctx = _ctx(
+            params,
+            speed_unit,
+            freq_max=freq_max,
+            spec_quality=spec_quality,
+            emitter_layout=meta.get("emitter_layout", "linear"),
+            mic_z=float(meta.get("mic_z", 1.2)),
+            atmosphere=_atmosphere_from_meta(meta),
+        )
         ctx.update(
             core.build_success_context(
                 render_id,

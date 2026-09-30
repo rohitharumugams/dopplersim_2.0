@@ -28,10 +28,10 @@
     <form id="path2d-form" action="{{ pass_by_urls.generate }}" method="post" enctype="multipart/form-data">
       <input type="hidden" name="path_json" id="path_json" value="">
 
-      <div class="layout">
-        <aside>
-          <section class="panel">
-            <h2>Recording</h2>
+      <section class="panel recording">
+        <h2>Recording</h2>
+        <div class="recording-row">
+          <div class="recording-pick">
             <label class="lbl" for="catalog_vehicle">Vehicle</label>
             <select id="catalog_vehicle" name="catalog_vehicle">
               {% for v in vehicle_options %}
@@ -44,10 +44,21 @@
               </option>
               {% endfor %}
             </select>
-            <label class="lbl" for="audio_file" style="margin-top: 0.75rem;">Or upload a WAV override</label>
+            <p class="schematic-identity" id="schematic-identity"></p>
+            <label class="lbl" for="audio_file">Or upload a WAV override</label>
             <input id="audio_file" name="audio_file" type="file" accept=".wav,audio/wav">
-          </section>
+          </div>
+          <div
+            class="schematic"
+            id="vehicle-schematic"
+            role="img"
+            aria-label="Vehicle dimensional schematic"
+          ></div>
+        </div>
+      </section>
 
+      <div class="layout">
+        <aside>
           <section class="panel">
             <h2>Source geometry</h2>
             <p class="hint">Inverts the recording. Physics always runs in m/s.</p>
@@ -78,9 +89,44 @@
                 <label class="lbl" for="vehicle_length">Length L (m)</label>
                 <input id="vehicle_length" name="vehicle_length" type="number" step="any" value="{{ params.vehicle_length if params else 4.5 }}">
               </div>
-              <div class="field">
+              <div class="field" id="emitter-count-field" {% if emitter_layout|default('linear') == 'body' %}hidden{% endif %}>
                 <label class="lbl" for="num_emitters">Emitters N</label>
                 <input id="num_emitters" name="num_emitters" type="number" min="1" step="1" value="{{ params.num_emitters if params else 3 }}">
+              </div>
+            </div>
+            <p class="lbl" style="margin-top: 0.85rem;">Layout</p>
+            <div class="units" role="group" aria-label="Emitter layout">
+              <label>
+                <input type="radio" name="emitter_layout" value="linear" {% if emitter_layout|default('linear') != 'body' %}checked{% endif %}>
+                <span>Linear</span>
+              </label>
+              <label>
+                <input type="radio" name="emitter_layout" value="body" {% if emitter_layout|default('linear') == 'body' %}checked{% endif %}>
+                <span>Body</span>
+              </label>
+            </div>
+            <p class="hint" id="layout-hint" style="margin-top: 0.55rem;">{% if emitter_layout|default('linear') == 'body' %}Inverts and renders the six body sources in 3D: four tire patches, the engine, and the exhaust.{% else %}Spaces N copies along the car, for both the invert and the render.{% endif %}</p>
+            <div class="field body-only" id="mic-height-field" {% if emitter_layout|default('linear') != 'body' %}hidden{% endif %}>
+              <label class="lbl" for="mic_z">Mic height (m)</label>
+              <input id="mic_z" name="mic_z" type="number" step="any" min="0" value="{{ mic_z | default(1.2) }}">
+            </div>
+            <label class="check" style="margin-top: 0.85rem;">
+              <input type="checkbox" name="air_absorption" {% if air_enabled|default(true) %}checked{% endif %}>
+              <span>Atmospheric absorption</span>
+            </label>
+            <p class="hint" style="margin-top: 0.35rem;">Frequency-dependent air loss on each emitter's retarded distance. Sound speed stays 343 m/s.</p>
+            <div class="row3">
+              <div class="field">
+                <label class="lbl" for="temperature_c">Temperature (°C)</label>
+                <input id="temperature_c" name="temperature_c" type="number" step="any" value="{{ temperature_c | default(20) }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="relative_humidity_percent">Humidity (%)</label>
+                <input id="relative_humidity_percent" name="relative_humidity_percent" type="number" step="any" min="0" value="{{ relative_humidity_percent | default(50) }}">
+              </div>
+              <div class="field">
+                <label class="lbl" for="pressure_atm">Pressure (atm)</label>
+                <input id="pressure_atm" name="pressure_atm" type="number" step="any" min="0.01" value="{{ pressure_atm | default(1) }}">
               </div>
             </div>
           </section>
@@ -166,6 +212,7 @@
             <div class="board">
               <canvas id="path2d-playback-canvas" width="640" height="420"></canvas>
             </div>
+            <p class="schematic-legend" id="path2d-emitter-legend" hidden></p>
           </div>
         </div>
         <script type="application/json" id="path2d-animation-url">{{ path_animation_url|tojson }}</script>
@@ -286,6 +333,7 @@
   </main>
 
   <script type="application/json" id="vehicle-catalog-data">{{ vehicle_catalog_json|safe }}</script>
+  <script src="{{ url_for('static', filename='whiteboard2d/schematic.js') }}"></script>
   <script src="{{ url_for('static', filename='whiteboard2d/board.js') }}"></script>
 </body>
 </html>
